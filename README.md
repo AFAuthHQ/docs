@@ -15,9 +15,10 @@ Built with [Mintlify](https://mintlify.com).
 ## Local development
 
 ```bash
-pnpm install
-pnpm dev          # starts Mintlify on http://localhost:3000
-pnpm broken-links # link check
+npm install
+npm run dev           # starts Mintlify on http://localhost:3000
+npm run broken-links  # link check
+npx mint validate     # strict build validation (what CI runs)
 ```
 
 ## Syncing

@@ -4,8 +4,9 @@
   "private": true,
   "description": "Documentation for the AFAuth Protocol — docs.afauth.org",
   "scripts": {
-    "dev": "mintlify dev",
-    "broken-links": "mintlify broken-links",
+    "dev": "mint dev",
+    "validate": "mint validate",
+    "broken-links": "mint broken-links",
     "sync:spec": "tsx scripts/sync-spec.ts",
     "sync:typescript-sdk": "tsx scripts/sync-typescript-sdk.ts",
     "sync:cli": "tsx scripts/sync-cli.ts"
@@ -15,6 +16,5 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "@types/node": "^22.0.0"
-  },
-  "packageManager": "[email protected]"
+  }
 }
