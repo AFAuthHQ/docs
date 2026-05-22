@@ -6,6 +6,14 @@ description: "Manage agent keys: rotate, export, import."
 <Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
 
 ```bash
+# Rotate the active key against a service (§8.1 pre-claim)
 afauth keys rotate --service https://api.example.com
+
+# Export the active key (stdout by default; --out writes to a file)
+afauth keys export
 afauth keys export --out backup.json
+
+# Install a key file as the active key (--force to overwrite an existing key)
+afauth keys import backup.json
+afauth keys import backup.json --force
 ```

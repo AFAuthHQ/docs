@@ -1,0 +1,23 @@
+---
+title: "afauth probe"
+description: "Run the v0.1 conformance probes against a live AFAuth service. Exits 0 only if every probe passes."
+---
+
+<Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
+
+Runs a deterministic battery of probes against the named service. A fresh `did:key` is generated per run, so probes operate against a virgin `UNCLAIMED` account.
+
+| Probe | Spec | Assertion |
+|---|---|---|
+| `discovery` | §4.3, §4.5 | `/.well-known/afauth` shape |
+| `implicit_signup` | §6.3 | signed `GET /accounts/me` → `200 UNCLAIMED` |
+| `expired_signature` | §5.6 | old signature → `401 expired_signature` |
+| `replayed_nonce` | §5.6 | nonce reuse → `401 replayed_nonce` |
+| `invalid_signature` | §5.5, §11.3 | garbage signature → `401 invalid_signature` |
+| `owner_invitation` | §7.2 | email recipient → `202 INVITED` |
+| `unsupported_recipient_type` | §7.2, §7.7 | undeclared type → `400 unsupported_recipient_type` |
+
+```bash
+afauth probe https://api.example.com
+afauth probe --json https://api.example.com | jq .
+```

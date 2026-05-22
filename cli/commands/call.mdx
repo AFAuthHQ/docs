@@ -6,6 +6,19 @@ description: "Make a signed HTTP request to an AFAuth-supporting service."
 <Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
 
 ```bash
+# Signed GET (default method)
 afauth call https://api.example.com/afauth/v1/accounts/me
+
+# Signed POST with inline body
 afauth call --method POST --data '{"x":1}' https://api.example.com/x
+
+# POST with body read from a file (--data accepts @path syntax)
+afauth call --method POST --data @body.json https://api.example.com/x
+
+# Repeatable extra headers
+afauth call --header 'X-Trace: abc' --header 'X-Tenant: foo' \
+            https://api.example.com/x
+
+# Include response headers in output
+afauth call --show-headers https://api.example.com/afauth/v1/accounts/me
 ```

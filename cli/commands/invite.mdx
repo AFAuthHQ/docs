@@ -1,12 +1,32 @@
 ---
 title: "afauth invite"
-description: "Invite a human (or external identity) to claim an agent-owned account."
+description: "Invite a human (or external identity) to claim an agent-owned account. Supports all four §7.7 recipient types."
 ---
 
 <Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
 
+Spec recipient types per §7.7: `email`, `phone`, `oidc`, `did`. All four are wired in the CLI.
+
 ```bash
+# email — bare positional, or explicit --type
 afauth invite alice@example.com --service https://api.example.com
-afauth invite --type oidc --issuer https://accounts.google.com --sub 12345 \
+afauth invite --type email --value alice@example.com \
               --service https://api.example.com
+
+# phone — E.164
+afauth invite --type phone --value +14155550173 \
+              --service https://api.example.com
+
+# oidc — issuer + subject (no --value)
+afauth invite --type oidc \
+              --issuer https://accounts.google.com --sub 12345 \
+              --service https://api.example.com
+
+# did
+afauth invite --type did --value did:web:alice.example \
+              --service https://api.example.com
+
+# optional: post-claim redirect (host must be in the service's allow-list per §7.2)
+afauth invite alice@example.com --service https://api.example.com \
+              --redirect-url https://yourapp.com/welcome
 ```

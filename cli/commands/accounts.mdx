@@ -1,11 +1,15 @@
 ---
 title: "afauth accounts"
-description: "Inspect local account state."
+description: "Inspect local account state, optionally refreshing from the service."
 ---
 
 <Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
 
 ```bash
+# Local ledger
 afauth accounts list
+afauth accounts list --json
+
+# Pull current state from the service before printing
 afauth accounts show --refresh https://api.example.com
 ```
