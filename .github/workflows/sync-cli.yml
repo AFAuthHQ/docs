@@ -1,0 +1,33 @@
+name: Sync from AFAuthHQ/cli
+
+# Triggered by AFAuthHQ/cli on release-tag.
+# Payload (client_payload): { tag: string, run_id: string }
+
+on:
+  repository_dispatch:
+    types: [cli-released]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "GitHub Actions run_id in AFAuthHQ/cli to pull the cobra doc-gen artifact from"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # TODO: wire up once AFAuthHQ/cli publishes a cobra doc-gen artifact.
+      # Suggested approach:
+      #   - actions/download-artifact@v4 with run-id and github-token
+      #   - Run pnpm sync:cli to transform/place files under cli/commands/
+      #   - peter-evans/create-pull-request@v6 with label `automerge: cli-sync`
+      #   - gh pr merge --auto --squash
+      - name: Placeholder
+        run: |
+          echo "ℹ sync-cli is a stub. Wire up the cobra doc-gen artifact pipeline in AFAuthHQ/cli first."

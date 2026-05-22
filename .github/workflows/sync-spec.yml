@@ -1,0 +1,81 @@
+name: Sync from AFAuthHQ/spec
+
+on:
+  # Event-driven: triggered by AFAuthHQ/spec via repository_dispatch
+  repository_dispatch:
+    types: [spec-updated]
+  # Belt-and-suspenders: nightly fallback if a dispatch is lost
+  schedule:
+    - cron: "0 6 * * *"
+  # Manual override
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Sync spec
+        run: pnpm sync:spec
+
+      - name: Diff-size sanity check
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- spec/; then
+            echo "no-changes=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ no spec changes — nothing to do"
+            exit 0
+          fi
+          stats=$(git diff --shortstat -- spec/ || true)
+          insertions=$(echo "$stats" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
+          deletions=$(echo "$stats" | grep -oE '[0-9]+ deletion'  | grep -oE '[0-9]+' || echo 0)
+          total=$(( insertions + deletions ))
+          echo "insertions=$insertions deletions=$deletions total=$total"
+          if [ "$total" -gt 0 ] && [ "$deletions" -gt $(( total / 2 )) ]; then
+            echo "::error::Suspicious deletion ratio ($deletions / $total > 50%). Refusing to open auto-merge PR."
+            exit 1
+          fi
+          echo "no-changes=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        id: cpr
+        if: steps.diff.outputs.no-changes != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(sync): spec from AFAuthHQ/spec"
+          title: "chore(sync): spec from AFAuthHQ/spec"
+          body: |
+            Auto-synced from [`AFAuthHQ/spec@main`](https://github.com/AFAuthHQ/spec).
+
+            This PR will auto-merge if all checks pass:
+            - Mintlify build
+            - Link check
+            - Diff-size sanity (already enforced before this PR was opened)
+
+            If any check fails, this PR will stay open with the failing status.
+          branch: sync/spec
+          delete-branch: true
+          labels: "automerge: spec-sync"
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"

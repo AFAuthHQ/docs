@@ -1,0 +1,158 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "AFAuth Protocol",
+  "description": "Agent-First Auth — the open protocol that makes AI agents first-class citizens of every service.",
+  "colors": {
+    "primary": "#0066FF",
+    "light": "#3385FF",
+    "dark": "#0052CC"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Get Started",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["introduction"]
+          },
+          {
+            "group": "Quickstart",
+            "pages": ["quickstart-agent", "quickstart-service"]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/why-afauth",
+              "concepts/identity-and-keys",
+              "concepts/ceremony",
+              "concepts/signing",
+              "concepts/error-envelope",
+              "concepts/attestation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Build an agent",
+            "pages": [
+              "guides/build-an-agent-typescript",
+              "guides/build-an-agent-cli"
+            ]
+          },
+          {
+            "group": "Operate a service",
+            "pages": [
+              "guides/accept-afauth-on-your-service",
+              "guides/verify-a-request",
+              "guides/invite-and-claim",
+              "guides/rotate-keys",
+              "guides/revoke-an-account",
+              "guides/rate-limiting",
+              "guides/deploy-cloudflare-worker"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK",
+        "groups": [
+          {
+            "group": "TypeScript",
+            "pages": [
+              "sdk/typescript/overview",
+              "sdk/typescript/installation",
+              {
+                "group": "@afauthhq/core",
+                "pages": ["sdk/typescript/core/overview"]
+              },
+              {
+                "group": "@afauthhq/agent",
+                "pages": ["sdk/typescript/agent/overview"]
+              },
+              {
+                "group": "@afauthhq/server",
+                "pages": ["sdk/typescript/server/overview"]
+              },
+              {
+                "group": "@afauthhq/worker",
+                "pages": ["sdk/typescript/worker/overview"]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["cli/overview", "cli/install"]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/commands/init",
+              "cli/commands/whoami",
+              "cli/commands/discover",
+              "cli/commands/call",
+              "cli/commands/signup",
+              "cli/commands/invite",
+              "cli/commands/accounts",
+              "cli/commands/keys"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Spec",
+        "groups": [
+          {
+            "group": "Specification",
+            "pages": [
+              "spec/core",
+              "spec/conformance",
+              "spec/well-known",
+              "spec/test-vectors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/well-known-afauth",
+              "reference/error-codes"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/AFAuthHQ"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Install CLI",
+      "href": "/cli/install"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/AFAuthHQ"
+    }
+  }
+}
