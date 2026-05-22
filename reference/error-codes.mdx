@@ -1,6 +1,76 @@
 ---
 title: "Error codes"
-description: "Full table of §11.3 error codes returned by AFAuth-compliant services."
+description: "The full §11.3 reserved error code list, each row with its HTTP status, when it's returned, and what a client should do."
 ---
 
-<Note>Stub — full table of error codes, HTTP status mapping, when each is returned, what clients should do. Designed as a single machine-extractable surface.</Note>
+<Info>
+**Status column is consolidated**, not pulled from a single spec table. The spec lists codes in [§11.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#113-reserved-error-codes) and status classes in [§11.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#112-status-codes), with several codes' statuses bound by section prose elsewhere. This page joins them.
+</Info>
+
+Every reserved code, its HTTP status, the spec section that triggers it, and a one-line note on the client-side response. For the envelope shape itself, see [Error envelope](/concepts/error-envelope).
+
+## All reserved codes (§11.3)
+
+| Code | Status | Triggered when | Spec | Client should |
+|---|---|---|---|---|
+| `invalid_signature` | `401` | Signature parsing fails, key resolution fails, Ed25519 verify fails, or content-digest doesn't match the body | §5.5 | Stop — the signer is broken |
+| `expired_signature` | `401` | `now > expires + skew_tolerance`. Clock drift or you held the signed request too long | §5.6 | Re-sign and retry |
+| `replayed_nonce` | `401` | `(keyid, nonce)` has been seen before within the freshness window | §5.6 | Stop — your signer is reusing nonces (bug) |
+| `revoked_key` | `401` | Account DID is on the service's revocation list | §8.3 | Onboard a fresh agent — the old key is gone |
+| `invalid_attestation` | `401` | Attestation JWT signature/claim violation, or `iss` not accepted by service | §10 | Re-mint with a valid attestor |
+| `attestation_required` | `401` | Service declares `unclaimed_mode = attested_only` and request lacks/has invalid attestation | §6.3, §9.2 | Mint an attestation from an accepted attestor |
+| `malformed_request` | `400` | Invalid JSON, missing required fields, invalid DID syntax | §11.2 | Fix the request shape |
+| `unsupported_recipient_type` | `400` | Invitation `recipient.type` isn't in the service's declared `recipient_types` | §7.2, §7.7 | Use a type from the discovery doc |
+| `unknown_account` | `404` | Account does not exist, and implicit signup is disabled | §6.4 | Use `POST /accounts` to explicitly sign up |
+| `invitation_not_found` | `404`<sup>†</sup> | Claim token doesn't match a pending invitation | §7.4 | Stop — invitation is gone |
+| `invitation_expired` | `410` | Invitation TTL exceeded, or atomically replaced by a newer one | §7.3 | Send a fresh invitation |
+| `account_expired` | `410` | Account exceeded `unclaimed_ttl_seconds` without being claimed | §6.1 | Onboard a fresh agent |
+| `already_claimed` | `409` | Operation requires `UNCLAIMED` / `INVITED` state but account is already `CLAIMED` | §11.2 | Stop — claim has already happened |
+| `not_claimed` | `409` | Operation requires `CLAIMED` state but account isn't claimed yet | §11.2 | Send an owner invitation first |
+| `owner_authentication_required` | `403` | Operation requires an owner-authenticated session; none was supplied (or supplied identity doesn't match the match relation) | §7.4 | Prompt the human to authenticate at the claim page |
+| `owner_session_too_stale` | `403` | Owner session present but `authenticatedAt` is missing or older than the §7.5 freshness window (60-300s) | §7.5 | Prompt the human to re-authenticate, then retry |
+| `owner_binding_blocked` | `403` | An agent-signed request attempted an owner-binding operation post-claim | §7.5 | Stop — this operation requires the owner |
+| `rate_limit_exceeded` | `429` | Per-route per-DID rate-limit bucket exhausted | §11.3 | Honour the `Retry-After` header |
+
+<sup>†</sup> Status for `invitation_not_found` is not explicitly bound in spec text. `404` is the conventional reading; a service may also use `410` if the invitation was previously valid and atomically superseded. Don't program against the status alone — inspect `code`.
+
+## Grouped by what you should do about it
+
+### Transient — retry with a small change
+
+- `expired_signature` — re-sign, retry.
+- `rate_limit_exceeded` — sleep `Retry-After` seconds, retry.
+- `owner_session_too_stale` — re-authenticate the human, retry.
+
+### Misconfigured — surface to the developer
+
+- `replayed_nonce` — your signer is buggy.
+- `malformed_request` — fix the request shape.
+- `unsupported_recipient_type` — read the discovery doc.
+- `invalid_attestation` / `attestation_required` — fix attestor wiring.
+
+### Onboarding required
+
+- `unknown_account` (implicit signup disabled) — call `POST /accounts`.
+- `revoked_key` / `account_expired` — start over with a fresh agent.
+
+### State machine boundary
+
+- `already_claimed` / `not_claimed` — read the spec state machine; the operation doesn't apply.
+- `owner_authentication_required` — needs the human in the loop.
+- `owner_binding_blocked` — needs the human in the loop, full stop.
+
+### Auth surface
+
+- `invalid_signature` — programmer error or hostile input.
+- `invitation_expired` / `invitation_not_found` — invitation is gone; re-issue.
+
+## Custom codes
+
+Services MAY add their own codes beyond §11.3 (`example_quota_exceeded`, `feature_not_in_plan`, etc.) and SHOULD prefix them with a service-specific namespace. The envelope shape is the same — clients can ignore unknown codes safely.
+
+## Further reading
+
+- [Error envelope](/concepts/error-envelope) — the response shape and how to consume it.
+- [Spec §11](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#11-error-responses) — normative.
+- [Test vectors §C.5](https://github.com/AFAuthHQ/spec/tree/main/vectors/errors) — one envelope fixture per reserved code.

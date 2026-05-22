@@ -1,6 +1,101 @@
 ---
 title: "Attestation"
-description: "Optional §10 mechanism for services to require attested agents."
+description: "An optional §10 mechanism that lets services know which runtime an agent is operating in — for abuse prevention, enterprise compliance, or rate-limit tiering."
 ---
 
-<Note>Stub — explain when attestation is needed, how `Attestor` works (`HmacAttestor`, `JwksAttestor`, `MultiAttestor`), and the `attested_only` flag in §9.2.</Note>
+By default, AFAuth accepts **any** well-formed Ed25519 keypair. That's the point — the agent is self-sovereign, no central registry, no gatekeeper. But "any keypair" also means a service has no way to distinguish:
+
+- A legitimate, well-behaved enterprise agent from
+- A throwaway abuse-bot generated five seconds ago.
+
+When a service needs that distinction, AFAuth offers an optional **attestation** layer: the agent presents a JWT signed by a third party (a *attestor*) that vouches for the agent's runtime context.
+
+## When you'd want this
+
+- **Pre-claim billing.** A service that allows pre-claim signup (`unclaimed_mode = "free"`) may want stronger assurance that someone billable is behind the agent before granting paid features. Move to `unclaimed_mode = "attested_only"` and require an attestation from a commerce attestor (`stripe-projects`, `fido-agent-payments`, `mastercard-verifiable-intent`).
+- **Enterprise compliance.** A service serving B2B customers may want to limit pre-claim signup to agents running in known enterprise platforms — `microsoft-entra-agent-id`, `google-cloud-agent-identity`, `aws-iam-agent`.
+- **Rate-limit tiering.** Attested agents get higher rate limits than anonymous ones. Cheap fraud-deterrence.
+
+## When you don't
+
+Most services don't need this. AFAuth's design accepts that pre-claim accounts are anonymous and short-lived. If your service's threat model handles that, attestation adds complexity for no benefit.
+
+## How it works
+
+The agent presents an attestation JWT in a header:
+
+```
+AFAuth-Attestation: <JWT signed by an accepted attestor>
+```
+
+Required claims per [§10.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#102-attestation-header):
+
+- `iss` — the attestor identifier (e.g., `"stripe-projects"`).
+- `sub` — the requesting agent's account DID.
+- `exp` — token expiry (unix seconds), in the future at the time of verification.
+- Other claims are attestor-specific.
+
+The service verifies the JWT against the attestor's published verification key (asymmetric attestors) or shared secret (HMAC attestors). The verifier MUST validate `iss` matches an accepted attestor and `sub` matches the request's signing DID.
+
+## Three attestor classes
+
+The TypeScript SDK ships three implementations of `Attestor`:
+
+| Class | Verifies | Use for |
+|---|---|---|
+| `HmacAttestor` | HS256 JWTs against a shared secret | First-party service-operator attestors (you mint the token yourself) |
+| `JwksAttestor` | Asymmetric JWTs against a JWKS URL | Platform / commerce attestors (Stripe, Entra, etc.) |
+| `MultiAttestor` | Dispatches by `iss` claim | A real service that accepts multiple attestor sources |
+
+```typescript
+import {
+  HmacAttestor,
+  JwksAttestor,
+  MultiAttestor,
+} from "@afauthhq/server";
+
+const attestor = new MultiAttestor([
+  new HmacAttestor({
+    iss: "my-service",
+    secret: process.env.ATTESTATION_SECRET!,
+  }),
+  new JwksAttestor({
+    iss: "stripe-projects",
+    jwksUrl: "https://stripe.example/.well-known/jwks.json",
+    algorithms: ["ES256"],
+  }),
+]);
+```
+
+Pass the composite `attestor` to `Server`; the `attested_only` enforcement happens automatically. Full recipe: [`examples/recipes/attestor.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/attestor.ts).
+
+## `unclaimed_mode = "attested_only"`
+
+When a service declares this in its discovery document:
+
+```json
+{
+  "billing": {
+    "unclaimed_mode": "attested_only",
+    "accepted_attestors": ["my-service", "stripe-projects"]
+  }
+}
+```
+
+…the server refuses implicit signup from any agent that doesn't present a valid `AFAuth-Attestation` header. The error response is `401 attestation_required`. The account row is **not** created on rejection — failing closed before any side effects.
+
+Other modes (`"free"`, `"denied"`) don't enforce attestation; if an agent presents one anyway, the server still validates it (rejecting invalid tokens with `401 invalid_attestation`) but doesn't require one.
+
+## Lifetime
+
+Attestations MUST be presented on a **per-request basis**. The service MUST NOT cache them beyond the JWT's `exp`. Attestations carry no state of their own — they are an additional gate on the signed request, not a session token.
+
+## Security note
+
+Services that accept attestations MUST validate the attestor's signature against an authoritative key source. Stale JWKS or expired shared secrets can permit forged attestations. The `JwksAttestor` from `@afauthhq/server` uses `jose`'s `createRemoteJWKSet`, which caches valid keys and honours key rotation. For HMAC attestors, rotate the shared secret on a schedule.
+
+## Further reading
+
+- [Spec §10](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#10-optional-agent-attestation) — normative attestation rules.
+- [Spec §9](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#9-billing-declaration) — billing modes including `attested_only`.
+- [Spec §12.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#125-attestation-forgery) — threat model for compromised attestor keys.

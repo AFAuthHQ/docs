@@ -1,6 +1,79 @@
 ---
 title: "Signing requests"
-description: "AFAuth signs HTTP requests with RFC 9421 canonical input + SHA-256 content-digest."
+description: "AFAuth signs HTTP requests with RFC 9421 — standard machinery, plus AFAuth-specific canonical components that bind each signature to a single service, time window, and replay-protected nonce."
 ---
 
-<Note>Stub — explain RFC 9421 in approachable terms, what gets signed, replay window, nonce. Links to §5 of the spec.</Note>
+AFAuth doesn't invent a signature format. It uses [HTTP Message Signatures (RFC 9421)](https://www.rfc-editor.org/rfc/rfc9421) with a specific set of covered components and parameters. That means existing RFC 9421 tooling — verifiers, debuggers, intermediaries — works against AFAuth out of the box.
+
+The SDK does the construction for you. You'll rarely look at the raw signature input string. But knowing what's in it helps when something goes wrong.
+
+## What gets signed
+
+| Component | Required | What it pins |
+|---|---|---|
+| `@method` | Always | The HTTP method — prevents replaying a `GET` as a `POST` |
+| `@target-uri` | Always | The full request URI — pins the signature to one service, one path, one query |
+| `content-digest` | When body present | SHA-256 of the request body, per [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) — body tampering breaks verification |
+
+Plus these signature parameters:
+
+| Parameter | What it pins |
+|---|---|
+| `created` | The signing timestamp |
+| `expires` | When the signature stops being valid (≤ 300s after `created`) |
+| `nonce` | A unique value preventing replay within the freshness window |
+| `keyid` | The account's DID — the **sole** identity surface |
+| `alg` | Signature algorithm (`ed25519` for v0.1) |
+
+Earlier drafts of the spec also signed `@authority` and an `AFAuth-Account` header. Both were removed: `@target-uri` subsumes the authority, and `keyid` is the only identity field — avoiding the [split-brain failure mode](https://www.rfc-editor.org/rfc/rfc9421.html#name-detecting-spoofed-signature) where two competing identity surfaces could disagree.
+
+## A signature on the wire
+
+```http
+POST /afauth/v1/accounts/me/owner-invitation HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+Content-Digest: sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:
+Signature-Input: sig1=("@method" "@target-uri" "content-digest")\
+  ;created=1747000000;expires=1747000060;nonce="a3f1...";\
+  keyid="did:key:z6Mk...";alg="ed25519"
+Signature: sig1=:MEUCIQ...:
+
+{"recipient": {"type": "email", "value": "alice@example.com"}}
+```
+
+Three things to notice:
+
+1. `Signature-Input` declares **what was signed**. The verifier rebuilds the canonical input from these declarations and the request and verifies the signature against the agent's public key (recovered from `keyid`).
+2. `nonce` is unique per request. The verifier maintains a seen-set of `(keyid, nonce)` tuples; a replay within the freshness window returns `replayed_nonce`.
+3. `expires - created ≤ 300`. The spec caps the signature lifetime at 5 minutes. Longer would extend the replay window without proportionate ergonomic benefit.
+
+## Verification, step by step
+
+When the service receives this request, the [`Verifier`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts):
+
+1. Parses `Signature-Input` and confirms all required covered components and parameters are present.
+2. Reconstructs the canonical input string per RFC 9421.
+3. Resolves the public key from `keyid` (decodes `did:key`, or fetches `did:web`'s DID document).
+4. Verifies the Ed25519 signature against the canonical input + public key.
+5. Checks the current time is between `created` and `expires`, with ±60 seconds of skew tolerance.
+6. Checks the `nonce` hasn't been seen before for this `keyid` within the storage window.
+7. If the body is non-empty, verifies `Content-Digest` matches `sha-256(body)`.
+
+Any step failing produces a `401 Unauthorized` with an [error envelope](/concepts/error-envelope).
+
+## Replay protection — scoped to `keyid`, not account
+
+The seen-nonce set is keyed by `(keyid, nonce)`, **not** `(account_did, nonce)`. This matters for `did:web` accounts that rotate their verification keys: one account identifier may present multiple keyids over its lifetime, and each keyid maintains its own nonce space. A nonce reused under a freshly-rotated key isn't a replay against the previous key's space.
+
+## What this means in practice
+
+- **Stop reusing nonces.** The SDK generates a fresh random nonce per request by default. Don't override unless you're testing.
+- **Clock matters.** If your agent's clock drifts ±60s from the service's, signatures will be rejected as future-dated or expired. NTP.
+- **Mind the body.** Any byte you'd serve to the server has to be in the signed `Content-Digest`. Stringify your JSON once, sign over that exact string, send that exact string. The SDK's `buildOwnerInvitation` and friends do this for you; if you're using `signRequest` directly, watch for JSON pretty-printing in your transport stack mangling the body.
+
+## Further reading
+
+- [Spec §5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#5-request-authentication) — full normative signing rules.
+- [Verify a request recipe](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts) — runnable verifier example.
+- [Error envelope](/concepts/error-envelope) — how signature failures surface.

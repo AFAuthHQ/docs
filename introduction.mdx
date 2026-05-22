@@ -1,27 +1,41 @@
 ---
 title: "Introduction"
-description: "AFAuth is the open protocol that makes AI agents first-class citizens of every service."
+description: "AFAuth is the open protocol that lets AI agents sign up to services on their own behalf, with their own cryptographic identity, and hand ownership to a human later."
 ---
 
-Human attention is finite. Agent attention is exploding. AFAuth is how that new attention reaches services — and how agents reach every service that exists.
+Existing auth assumes a human is the root of trust. Agents reach services either by impersonating one (browser automation against signup forms) or by being delegated scope from a pre-existing human account (OAuth). Both break down as agents become the primary actor.
 
-Agents sign themselves up with their own cryptographic keypair, operate accounts on their own, and optionally hand ownership to a human at any later point.
+AFAuth takes the opposite stance. An **agent signs up on its own behalf**, identified by a cryptographic keypair it controls. If a human ever wants ownership, the agent invites them; the binding only takes effect once the human authenticates from the invited address. The agent continues to operate the account afterwards — but ownership-changing operations become privileged to the human.
 
 ## Two front doors
 
 <CardGroup cols={2}>
   <Card title="Build an agent" icon="robot" href="/quickstart-agent">
-    Five lines to sign up to any AFAuth-supporting service.
+    Generate a keypair, sign your first request, and invite a human to claim the account.
   </Card>
   <Card title="Accept AFAuth on your service" icon="server" href="/quickstart-service">
-    Verify agent requests in minutes.
+    Mount the discovery document, verify signed requests, and host the claim page.
   </Card>
 </CardGroup>
 
+## What's normative, what's reference
+
+AFAuth is a **protocol**, not a product. The specification, reference implementations, and tools live in separate repos:
+
+| Artifact | Repo | Role |
+|---|---|---|
+| Specification | [`AFAuthHQ/spec`](https://github.com/AFAuthHQ/spec) | Normative protocol text, JSON schemas, test vectors, conformance harness |
+| TypeScript SDK | [`AFAuthHQ/typescript-sdk`](https://github.com/AFAuthHQ/typescript-sdk) | `@afauthhq/agent`, `@afauthhq/server`, `@afauthhq/worker`, `@afauthhq/core` |
+| CLI | [`AFAuthHQ/cli`](https://github.com/AFAuthHQ/cli) | `afauth` — single-binary reference agent runtime (Go) |
+
+Alternative implementations are welcome. The protocol is small and language-agnostic.
+
 ## Status
 
-**v0.1 — Working Draft.** Reference implementations green against the spec's conformance harness.
+**v0.1 — working draft.** Reference implementations pass the conformance harness against the v0.1 vectors. APIs may change in v0.2 based on real-world integration feedback. The reference SDK ships as [`@afauthhq/{agent,server,worker,core}@0.1.0`](https://www.npmjs.com/org/afauthhq) on npm; the reference CLI ships as [`afauthhq/cli@v0.1.0`](https://github.com/AFAuthHQ/cli/releases/tag/v0.1.0) (Homebrew + `install.sh` + Go install all live).
 
-- Specification: [`AFAuthHQ/spec`](https://github.com/AFAuthHQ/spec)
-- TypeScript SDK: [`AFAuthHQ/typescript-sdk`](https://github.com/AFAuthHQ/typescript-sdk) — published to npm as [`@afauthhq/*`](https://www.npmjs.com/org/afauthhq)
-- CLI: [`AFAuthHQ/cli`](https://github.com/AFAuthHQ/cli)
+## Where to next
+
+- New to the protocol? Read [Why AFAuth](/concepts/why-afauth) and [The ceremony](/concepts/ceremony).
+- Want code first? Pick a quickstart above.
+- Operating a service and want to verify a request right now? Jump to [Verify a request](/sdk/typescript/server/overview) or copy [`examples/recipes/verify.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts).

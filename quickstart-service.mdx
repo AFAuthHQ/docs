@@ -1,9 +1,9 @@
 ---
 title: "Quickstart: accept AFAuth on your service"
-description: "Verify agent requests with @afauthhq/server in minutes."
+description: "Mount the discovery document, verify a signed request, and start accepting agents."
 ---
 
-<Note>Stub — fill in with the canonical service-side example: discovery doc, Verifier, signup endpoint.</Note>
+You're going to make a service accept AFAuth-signed requests. After this, any AI agent in the world can sign up to your service with its own keypair — no portal to maintain, no API keys to provision.
 
 ## Install
 
@@ -11,20 +11,106 @@ import InstallSdk from "/snippets/install-sdk.mdx";
 
 <InstallSdk />
 
-## Mount the endpoints
+## Configure a Server
 
-```ts
-// example
+`Server` wraps a [`Verifier`](/concepts/signing) and adds endpoint handlers for discovery, owner invitation, claim completion, key rotation, and account introspection.
+
+```typescript
+import {
+  consoleEmailHandler,
+  MemoryAccountStore,
+  MemoryNonceStore,
+  MemoryRevocationList,
+  Server,
+} from "@afauthhq/server";
+
+const server = new Server({
+  serviceDid: "did:web:api.example.com",
+  baseUrl: "https://api.example.com",
+
+  // Storage. Memory stores are for development only — swap for D1 /
+  // KV / Postgres / Redis in production. See @afauthhq/worker for the
+  // Cloudflare-native durable stores.
+  nonceStore: new MemoryNonceStore(),
+  accounts: new MemoryAccountStore(),
+  revocationList: new MemoryRevocationList(),
+
+  // The §7.2 owner-invitation ceremony. consoleEmailHandler logs the
+  // magic link to stderr — replace with your real email transport.
+  recipients: { email: consoleEmailHandler },
+
+  // §7.2: redirect_url is rejected unless its host is in this list.
+  redirectAllowList: ["yourapp.com"],
+
+  // Your discovery document — the JSON returned at /.well-known/afauth.
+  discovery: {
+    afauth_version: "0.1",
+    service_did: "did:web:api.example.com",
+    endpoints: {
+      accounts: "/afauth/v1/accounts",
+      owner_invitation: "/afauth/v1/accounts/me/owner-invitation",
+      claim_page: "/claim",
+      claim_completion: "/afauth/v1/claim",
+      key_rotation: "/afauth/v1/accounts/me/keys/rotate",
+    },
+    signature_algorithms: ["ed25519"],
+    recipient_types: ["email"],
+  },
+});
 ```
 
-## Verify an incoming request
+## Route incoming requests to the handlers
 
-```ts
-// example
+```typescript
+export default {
+  async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/.well-known/afauth") {
+      return server.handleDiscovery(req);
+    }
+    if (url.pathname === "/afauth/v1/accounts/me") {
+      return server.handleAccountIntrospection(req);
+    }
+    if (url.pathname === "/afauth/v1/accounts/me/owner-invitation") {
+      return server.handleOwnerInvitation(req);
+    }
+    if (url.pathname === "/afauth/v1/accounts/me/keys/rotate") {
+      return server.handleKeyRotation(req);
+    }
+    // /afauth/v1/claim/<token> — see the claim-page recipe for the
+    // OwnerSession bit. https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts
+
+    return new Response("not found", { status: 404 });
+  },
+};
 ```
+
+## Verify it works
+
+Hit the discovery endpoint:
+
+```bash
+curl https://api.example.com/.well-known/afauth
+```
+
+Then, from another machine, run the conformance probe to check the full surface:
+
+```bash
+afauth probe https://api.example.com
+```
+
+The CLI generates a fresh agent, makes a signed `GET /accounts/me` (which triggers implicit signup), tries an expired signature, tries a replayed nonce, and so on — exiting `0` only if every probe passes. See [`afauth probe`](/cli/commands/probe).
+
+## Production checklist
+
+- Swap `Memory*` stores for durable backends. `@afauthhq/worker` ships `D1AccountStore`, `KvNonceStore`, `KvRevocationList`. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
+- Replace `consoleEmailHandler` with a real email transport.
+- Host the claim page — the SDK doesn't route it for you because it's service UI. Reference: [`examples/recipes/claim-page.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts).
+- Decide your [billing mode](/concepts/attestation) — `free`, `attested_only`, or `denied` — and declare it in the discovery document.
 
 ## Next steps
 
-- [Verify a request](/guides/verify-a-request)
-- [Error envelope](/concepts/error-envelope)
-- [Full SDK reference](/sdk/typescript/server/overview)
+- [The ceremony](/concepts/ceremony) — what your service is actually enforcing, and why.
+- [Error envelope](/concepts/error-envelope) — the shape your service must return.
+- [`@afauthhq/server` overview](/sdk/typescript/server/overview) — full API surface.

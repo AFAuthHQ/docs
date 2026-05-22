@@ -1,6 +1,113 @@
 ---
 title: "Error envelope"
-description: "The §11 error shape every AFAuth-compliant service returns."
+description: "Every AFAuth-conformant service returns errors in one shape: { error: { code, message, details? } }. The code is stable; the message is for humans."
 ---
 
-<Note>Stub — explain the envelope `{ error: { code, message, ... } }`, the §11.3 code table, and how clients should interpret them. Reference: [/reference/error-codes](/reference/error-codes).</Note>
+AFAuth standardises the error response so clients can program against `code` without parsing `message`. Every error response — at every endpoint, for every failure — uses the same shape.
+
+## The shape
+
+```json
+{
+  "error": {
+    "code":    "invalid_signature",
+    "message": "Signature verification failed",
+    "details": { }
+  }
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `code` | yes | A stable identifier from the [§11.3 reserved codes](/reference/error-codes). |
+| `message` | yes | Human-readable. SHOULD NOT contain sensitive details. |
+| `details` | no | Error-specific structured information. Use freely; clients ignore unknown keys. |
+
+## Status codes
+
+Services use the standard HTTP status family per [§11.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#112-status-codes):
+
+| Status | Meaning |
+|---|---|
+| `400 Bad Request` | Malformed request — invalid JSON, missing required fields, invalid DID syntax |
+| `401 Unauthorized` | Signature verification failed, key revoked, or attestation invalid |
+| `403 Forbidden` | Operation not permitted in the current state |
+| `404 Not Found` | Account does not exist (only when implicit signup is disabled) |
+| `409 Conflict` | State conflict — e.g., account already `CLAIMED`, key already revoked |
+| `410 Gone` | Account is `EXPIRED` or invitation has expired |
+| `429 Too Many Requests` | Rate limit exceeded |
+| `503 Service Unavailable` | Service temporarily unable to process AFAuth requests |
+
+Status alone isn't enough to act on — multiple codes share `401`. Always inspect `code`.
+
+## Consuming errors as a client
+
+```typescript
+const res = await fetch(signed.url, {
+  method: signed.method,
+  headers: signed.headers,
+  body: signed.body,
+});
+
+if (!res.ok) {
+  const body = await res.json();
+  const { code, message } = body.error;
+
+  switch (code) {
+    case "expired_signature":
+      // Clock drift or you sat on the signed request too long. Re-sign.
+      return resign();
+    case "replayed_nonce":
+      // You reused a nonce — bug in your signer, not the service.
+      throw new Error(`signer bug: ${message}`);
+    case "revoked_key":
+      // Your key was revoked. Get a new one + restart signup.
+      throw new Error("key revoked, re-onboard");
+    case "rate_limit_exceeded":
+      // Honour Retry-After.
+      const retryAfter = Number(res.headers.get("retry-after") ?? 1);
+      await sleep(retryAfter * 1000);
+      return retry();
+    case "attestation_required":
+      // Service is attested_only and you didn't send AFAuth-Attestation.
+      throw new Error("service requires attestation");
+    default:
+      throw new Error(`afauth: ${code}: ${message}`);
+  }
+}
+```
+
+This is the typical decision tree. Three codes are particularly worth disambiguating: `owner_authentication_required` (no owner session at all), `owner_session_too_stale` (session present but expired against the §7.5 freshness window), and `owner_binding_blocked` (an agent-signed request to an owner-binding operation). All three return `403`, but the user-facing prompt differs — re-authenticate vs. tell the user this is operator-only.
+
+## Producing errors as a service
+
+The TypeScript SDK throws `AFAuthError(code, status, message)` from its handlers. Render the throw to the envelope:
+
+```typescript
+function errorResponse(err: unknown): Response {
+  if (typeof err === "object" && err !== null &&
+      "code" in err && "status" in err && "message" in err) {
+    const e = err as { code: string; status: number; message: string };
+    return new Response(
+      JSON.stringify({ error: { code: e.code, message: e.message } }),
+      { status: e.status, headers: { "content-type": "application/json" } },
+    );
+  }
+  return new Response(
+    JSON.stringify({ error: { code: "internal_error", message: "internal error" } }),
+    { status: 500, headers: { "content-type": "application/json" } },
+  );
+}
+```
+
+Full reference: [`examples/recipes/verify.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts).
+
+## Custom error codes
+
+Services MAY define additional codes for service-specific conditions — `example_quota_exceeded`, `feature_not_in_plan`, etc. Per [§11.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#113-reserved-error-codes), custom codes SHOULD be prefixed with a service-specific namespace so clients can distinguish them from reserved codes.
+
+## Further reading
+
+- [Reserved error codes table](/reference/error-codes) — the full §11.3 list with status, trigger, and client-side response.
+- [Spec §11](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#11-error-responses) — normative.
+- [Test vectors §C.5](https://github.com/AFAuthHQ/spec/tree/main/vectors/errors) — one envelope fixture per reserved code.

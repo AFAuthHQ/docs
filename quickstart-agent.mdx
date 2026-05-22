@@ -1,9 +1,9 @@
 ---
 title: "Quickstart: build an agent"
-description: "Five lines to make an AI agent sign up to any AFAuth-supporting service with its own keypair."
+description: "Generate a keypair, fetch a service's discovery document, and make your first signed request — five minutes."
 ---
 
-<Note>Stub — fill in with the canonical five-line example from `@afauthhq/agent`.</Note>
+You're going to make an AI agent sign itself up to a service that supports AFAuth. The agent generates its own Ed25519 keypair, derives a `did:key` identifier from it, signs an HTTP request per [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421), and the service treats it as a first-class principal — no human in the loop.
 
 ## Install
 
@@ -11,14 +11,63 @@ import InstallSdk from "/snippets/install-sdk.mdx";
 
 <InstallSdk />
 
-## Sign your first request
+## Make your first signed request
 
-```ts
-// example
+```typescript
+import { Agent } from "@afauthhq/agent";
+
+const agent = await Agent.generate();
+console.log(agent.did); // "did:key:z6Mk..."
+
+// Build a signed GET against the service's /accounts/me endpoint.
+const signed = await agent.buildAccountIntrospection({
+  baseUrl: "https://api.example.com",
+});
+
+const res = await fetch(signed.url, {
+  method: signed.method,
+  headers: signed.headers,
+});
+
+const account = await res.json();
+console.log(account);
+// { account_did: "did:key:z6Mk...", state: "UNCLAIMED", ... }
 ```
+
+A few things just happened:
+
+- `Agent.generate()` made a fresh Ed25519 keypair and computed a `did:key` for the public half.
+- `buildAccountIntrospection` produced a fully signed request: covered components (`@method`, `@target-uri`), signature parameters (`created`, `expires`, `nonce`, `keyid`, `alg`), and the Ed25519 signature itself. See [Signing requests](/concepts/signing).
+- The first signed request from an unrecognised DID triggers **implicit signup** on the service ([§6.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#63-implicit-signup)). The account exists immediately in `UNCLAIMED` state.
+
+Persist `agent` somewhere durable — the private key is the sole credential for pre-claim operations.
+
+```typescript
+const privateKey = agent.exportPrivateKey();
+// Store privateKey securely. See concepts/identity-and-keys.
+```
+
+## Invite a human to claim the account
+
+When you want a human to own the account, the agent stages an invitation. The binding only commits after the human authenticates from the invited address — see [The ceremony](/concepts/ceremony) for why.
+
+```typescript
+const signed = await agent.buildOwnerInvitation({
+  baseUrl: "https://api.example.com",
+  recipient: { type: "email", value: "alice@example.com" },
+});
+
+await fetch(signed.url, {
+  method: signed.method,
+  headers: signed.headers,
+  body: signed.body,
+});
+```
+
+The service sends a magic link to `alice@example.com`. After Alice clicks and authenticates, the account transitions to `CLAIMED` and the agent continues to operate it — but ownership-changing operations now require Alice's session.
 
 ## Next steps
 
-- [How signing works](/concepts/signing)
-- [Identity and keys](/concepts/identity-and-keys)
-- [Full SDK reference](/sdk/typescript/agent/overview)
+- [The ceremony](/concepts/ceremony) — why the agent's signature alone can't bind ownership.
+- [Identity and keys](/concepts/identity-and-keys) — `did:key` vs `did:web`, key storage, rotation.
+- [`@afauthhq/agent` overview](/sdk/typescript/agent/overview) — full API surface.

@@ -1,6 +1,52 @@
 ---
 title: "Why AFAuth"
-description: "The case for an agent-first auth protocol."
+description: "Existing auth assumes a human is the root of trust. Agents need a different model."
 ---
 
-<Note>Stub — narrative on why existing auth (OAuth, API keys, passkeys) doesn't fit agents, and what AFAuth changes.</Note>
+Today, AI agents reach internet services in one of two ways:
+
+1. **Impersonating a human** — browser automation against signup forms, password vaults, magic-link interception. Brittle, against most services' Terms of Service, and indistinguishable from fraud from the service's perspective.
+2. **Delegated scope from a human's account** — OAuth-style `actor_token` flows. Useful, but requires a human account to exist first and ties the agent's lifespan to that human's session.
+
+Both approaches assume a human user is the **root of trust**. That assumption breaks down when:
+
+- A long-running autonomous agent needs persistent state on a third-party service.
+- An agent interacts with a service before any human is involved.
+- A human may *eventually* claim an account — but isn't present at creation.
+- A service wants to support agent-first commerce without requiring upfront human registration.
+
+## What AFAuth changes
+
+AFAuth inverts the assumption. An **agent signs up on its own behalf**, identified by a cryptographic keypair it controls. The agent is the principal; the human is optional and can be added later.
+
+| | Today | With AFAuth |
+|---|---|---|
+| Who creates the account | A human, ahead of time | The agent, at first contact |
+| What identifies the account | An email + password | A `did:key` derived from an Ed25519 keypair |
+| How the agent authenticates | A bearer token issued via OAuth | An RFC 9421 signature per request |
+| How a human gets ownership | They *are* the owner from day one | They claim the account later, if/when desired |
+| Cross-service portability | None — re-register everywhere | Optional — the same DID works anywhere, or per-service keys for unlinkability |
+
+## What AFAuth doesn't change
+
+AFAuth is one layer of the agent-services stack. It addresses **identity** — currently the gap — and composes with everything around it.
+
+| Layer | Examples | AFAuth's role |
+|---|---|---|
+| Capability / transport | MCP, A2A | The AFAuth DID can be carried in MCP's CIMD URL and A2A Agent Card identity fields |
+| Authorization | OAuth 2.0 `actor_token`, OIDC for AI Agents, FIDO AP2, Visa Trusted Agent | An AFAuth signature serves as the `actor_token` and as the cryptographic identity inside payment-authorization tokens |
+| **Identity** | **AFAuth** | Self-sovereign agent identity for the open web |
+
+AFAuth doesn't replace OAuth, MCP, A2A, or attestation systems. It plugs into them.
+
+## When NOT to use AFAuth
+
+- You already have a working OAuth-delegated agent flow and don't expect agents to operate without a pre-existing human account. AFAuth's value-add is small here.
+- You're inside a managed enterprise environment where every agent identity is provisioned centrally (e.g., Microsoft Entra Agent ID). You can still use AFAuth here, but the simpler model is to use the platform's agent identity directly — AFAuth's attestation hook (§10) lets you bridge.
+- You need inter-agent delegation. That's covered by separate protocols (Google A2A, OAuth `actor_token`); AFAuth provides the identity those protocols delegate from, not the delegation flow itself.
+
+## Further reading
+
+- [Identity and keys](/concepts/identity-and-keys) — how AFAuth names accounts.
+- [The ceremony](/concepts/ceremony) — how an agent-owned account becomes human-owned.
+- [Spec §1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1-introduction) — the normative motivation.

@@ -1,6 +1,95 @@
 ---
 title: "The ceremony"
-description: "Signup, invite, claim, and handoff — how AFAuth accounts move through their lifecycle."
+description: "An AFAuth account is created by an agent and optionally bound to a human owner later. The agent's signature alone never binds ownership — that's the protocol's security boundary."
 ---
 
-<Note>Stub — walk through the full account lifecycle: signup → invite → claim → handoff. Links to §6–§8 of the spec.</Note>
+The transition from an agent-owned account to a human-owned account is the **security boundary** of AFAuth. The protocol calls this the *ceremony*, and it has one invariant:
+
+> The agent's signature alone MUST NOT bind ownership.
+
+If a stolen agent key could re-target ownership to an attacker-controlled address, the account is permanently compromised. AFAuth prevents this by requiring two distinct authentications: the agent's signature, and the human's authentication at the invited address.
+
+## The five states
+
+| State | Meaning |
+|---|---|
+| `UNCLAIMED` | Account exists. No owner is bound. Created by signup. |
+| `INVITED` | An owner invitation is pending. Not yet claimed. |
+| `CLAIMED` | Account is bound to an owner. |
+| `EXPIRED` | Unclaimed for too long (`unclaimed_ttl_seconds`). No longer operable. |
+| `ARCHIVED` | Explicitly deleted by the owner. Retained for audit. |
+
+Transitions are enumerated in [Appendix A of the spec](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#appendix-a-state-machine). Conforming services MUST NOT permit any others.
+
+## The two-step verify
+
+```
+            ┌──────────────────────────────────┐
+            │  1. Agent signs an invitation    │
+            │     POST /owner-invitation       │
+            │     recipient: alice@example.com │
+            └────────────────┬─────────────────┘
+                             │
+                             ▼
+            ┌──────────────────────────────────┐
+            │  Service: account → INVITED      │
+            │  pending_recipient = alice@...   │
+            │  ceremony issued (magic link)    │
+            └────────────────┬─────────────────┘
+                             │
+                             ▼
+            ┌──────────────────────────────────┐
+            │  2. Alice authenticates as       │
+            │     alice@example.com            │
+            │     POST /claim/<token>          │
+            └────────────────┬─────────────────┘
+                             │
+                             ▼
+            ┌──────────────────────────────────┐
+            │  Service: match relation passes  │
+            │  account → CLAIMED               │
+            │  owner.identity = alice@...      │
+            └──────────────────────────────────┘
+```
+
+The agent stages the recipient (step 1). The service runs whatever ceremony it chooses for that recipient type — typically a magic-link email for `email`, OIDC for `oidc`, an OTP for `phone`, or a signed challenge for `did`. The human authenticates from that ceremony (step 2). Only then does the binding commit.
+
+The **match relation** is the rule the service applies in step 2: case-insensitive equality for email per RFC 5321, exact `iss`+`sub` for OIDC, canonical DID equality with a signed challenge for `did`. The service MUST verify that the human's authenticated identity matches `pending_recipient` before transitioning to `CLAIMED`.
+
+## Why this matters
+
+Without two-step verify, an attacker who exfiltrates the agent's private key could:
+
+1. Sign an owner-invitation with `recipient: attacker@evil.example`.
+2. Be the authenticated party at step 2.
+3. Walk away owning the account.
+
+With two-step verify, the attacker who holds the agent's key can still invite themselves — but to actually claim, they must authenticate as the human they invited. They can do that only if they also control that email/phone/OIDC identity, which is a substantially harder attack.
+
+This is the invariant that makes a stolen agent key recoverable: the legitimate operator can still revoke + rotate, because the human side of the binding remains under human control.
+
+## Post-claim: agent and owner are both first-class
+
+After an account is `CLAIMED`, both the agent and the owner can act on it. The agent doesn't lose any authority for ordinary operations — it keeps signing requests as before. The owner gains authority over **owner-binding operations**: changes that modify which credentials can authenticate as the owner. Those operations require an owner-authenticated session, with [fresh authentication](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim) (60-300 seconds). The agent key alone is insufficient.
+
+The spec's enumerated owner-binding operations:
+
+- Changing the bound owner identity
+- Enrolling additional authentication credentials
+- Adding or modifying recovery contacts
+- Linking federated identities
+- Adding additional principals to the account
+
+Services classify their own operations against this rule. The SDK provides [`assertFreshOwnerSession`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/revoke.ts) for the freshness check.
+
+## Pre-claim state survives the transition
+
+An agent — or anyone who held the agent's key during the `UNCLAIMED` / `INVITED` window — may have accumulated state: configurations, integrations, billing relationships, member lists. That state survives the transition to `CLAIMED`. The protocol doesn't prescribe how services handle this; it's a service-defined policy decision ([§12.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#127-pre-claim-account-state)).
+
+Services SHOULD surface pre-claim state to the claiming human in a form they can evaluate, accept, or reset. That's outside the protocol's wire surface but inside the service's responsibility.
+
+## Further reading
+
+- [Spec §7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#7-owner-invitation-and-claim) — normative ceremony rules, including the match relation per recipient type.
+- [Spec §12.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#123-claim-ceremony-strength) — assurance levels and phishing-resistant ceremonies.
+- [`examples/recipes/claim-page.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts) — reference implementation of the claim page.
