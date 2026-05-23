@@ -13,7 +13,7 @@ import InstallSdk from "/snippets/install-sdk.mdx";
 
 ## Configure a Server
 
-`Server` wraps a [`Verifier`](/concepts/signing) and adds endpoint handlers for discovery, owner invitation, claim completion, key rotation, and account introspection.
+`Server` wraps a [`Verifier`](/concepts/signing) and adds endpoint handlers for discovery, explicit signup, account introspection, owner invitation, claim completion, and key rotation.
 
 ```typescript
 import {
@@ -68,6 +68,10 @@ export default {
 
     if (url.pathname === "/.well-known/afauth") {
       return server.handleDiscovery(req);
+    }
+    if (url.pathname === "/afauth/v1/accounts" && req.method === "POST") {
+      // §6.4 explicit signup. Omit if your service only uses implicit signup.
+      return server.handleAccountCreate(req);
     }
     if (url.pathname === "/afauth/v1/accounts/me") {
       return server.handleAccountIntrospection(req);
