@@ -98,13 +98,7 @@ Hit the discovery endpoint:
 curl https://api.example.com/.well-known/afauth
 ```
 
-Then, from another machine, run the conformance probe to check the full surface:
-
-```bash
-afauth probe https://api.example.com
-```
-
-The CLI generates a fresh agent, makes a signed `GET /accounts/me` (which triggers implicit signup), tries an expired signature, tries a replayed nonce, and so on — exiting `0` only if every probe passes. See [`afauth probe`](/cli/commands/probe).
+For deeper conformance, run the spec's Appendix C vectors against your `Verifier` in your own test suite — `@afauthhq/server`'s test suite already does this, so cloning that pattern is the fastest path. The canonical vectors live at [`AFAuthHQ/spec/vectors`](https://github.com/AFAuthHQ/spec/tree/main/vectors).
 
 ## Production checklist
 

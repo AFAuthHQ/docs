@@ -100,7 +100,6 @@
               "cli/commands/init",
               "cli/commands/whoami",
               "cli/commands/discover",
-              "cli/commands/probe",
               "cli/commands/call",
               "cli/commands/signup",
               "cli/commands/invite",
