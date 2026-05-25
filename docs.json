@@ -143,6 +143,14 @@
   "navbar": {
     "links": [
       {
+        "label": "afauth.org",
+        "href": "https://afauth.org"
+      },
+      {
+        "label": "Registry",
+        "href": "https://registry.afauth.org"
+      },
+      {
         "label": "GitHub",
         "href": "https://github.com/AFAuthHQ"
       }
