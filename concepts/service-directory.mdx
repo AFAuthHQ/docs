@@ -1,0 +1,73 @@
+---
+title: "The service directory"
+description: "What registry.afauth.org is, why listing is opt-in, and how it relates to the protocol itself."
+---
+
+The **service directory** at [registry.afauth.org](https://registry.afauth.org) is a public list of services that have voluntarily announced AFAuth support. It exists so an agent looking for AFAuth-supporting services has *somewhere to look* — and so a service that wants to be found has *somewhere to announce*.
+
+The directory is **non-normative**. The protocol does not require any agent or service to interact with it. If `afauth.org` disappeared tomorrow, every conforming AFAuth agent and service would continue working unchanged.
+
+<Note>
+The directory is defined in [AFAP-0003](https://github.com/AFAuthHQ/spec/blob/main/proposals/0003-service-directory.md) and described in
+[`spec/directory.md`](https://github.com/AFAuthHQ/spec/blob/main/spec/directory.md) (informational). The normative protocol lives in
+[`spec/core.md`](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md) — it does not change with this directory.
+</Note>
+
+## Why it exists
+
+The protocol intentionally leaves service discovery — *"what URL should the agent probe?"* — out of scope. That's the right call: a normative directory would make every agent and every service depend on a single root, exactly the kind of centralisation AFAuth is designed to avoid.
+
+But "out of scope for the protocol" is not the same as "no convention exists." At v0 adoption, agents need a way to enumerate the first batch of AFAuth-supporting services. The directory fills that gap without baking itself into the protocol.
+
+## What a listing actually proves
+
+A listing means **one** thing: the controller of the discovery host proved control of that host at registration time, and the host has continued to serve a valid `/.well-known/afauth` document since.
+
+A listing does **not** mean:
+
+- The service has been audited or certified.
+- The service is well-behaved, reputable, or appropriate for any particular agent.
+- The service supports any specific feature beyond the minimum advertised in its discovery document.
+
+Listings are announcements, not endorsements. Browse with the same skepticism you'd apply to any open list.
+
+## Membership is opt-in and self-serve
+
+A service controller registers their own service. There is no application process, no review, no gatekeeper. The directory authenticates a controller by **proof of control of the discovery host** — the same DNS + TLS anchor that ACME (HTTP-01) and the AFAuth discovery mechanism itself rely on.
+
+If you want to be listed, follow the [step-by-step guide](/guides/list-on-the-registry). It takes a few minutes.
+
+## Identity model
+
+A listing is bound to the `service_did` already declared in the discovery document. The directory does not invent a new namespace — `did:web` and `did:key` identifiers are accepted on equal terms, with the caveat that `did:key` entries carry no DNS anchor and are rendered with a "no domain anchor" indicator on browse interfaces (per [§3](https://github.com/AFAuthHQ/spec/blob/main/spec/directory.md#3-identity-model)).
+
+Two services cannot legitimately claim the same `service_did` because the DID resolves to at most one key set — the directory enforces uniqueness at registration.
+
+## Federation
+
+The directory is not the protocol's single source of truth. Anyone may host a directory implementing the same surface; agents and aggregators may consume any directory or several. The schema lives in [`schemas/listing.json`](https://github.com/AFAuthHQ/spec/blob/main/schemas/listing.json) and is versioned alongside the spec.
+
+Three deployment patterns the spec calls out (see [§8](https://github.com/AFAuthHQ/spec/blob/main/spec/directory.md#8-federation)):
+
+- **Mirrors** poll `GET /v1/listings?updated_since=…` and serve identical content under their own domain.
+- **Aggregators** combine the canonical directory with curation, scan results, or editorial annotations.
+- **Private directories** run inside an enterprise for services that never publish to `afauth.org`.
+
+The schema and challenge-based registration protocol are public — fork the [reference implementation](https://github.com/AFAuthHQ/registry) and run your own.
+
+## Governance
+
+`registry.afauth.org` is operated by AFAuthHQ in this version. The operator commitment at [registry.afauth.org/operator](https://registry.afauth.org/operator) documents who has authority, what AFAuthHQ may do unilaterally, and what it must not. The take-down policy is published at [registry.afauth.org/policy](https://registry.afauth.org/policy).
+
+Decisions made by the canonical directory do not bind mirrors. A delisting here may not propagate to a mirror that disagrees with the determination.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="List your service" icon="list-check" href="/guides/list-on-the-registry">
+    Step-by-step: challenge, proof, submit, session token.
+  </Card>
+  <Card title="API reference" icon="code" href="/reference/registry-api">
+    Endpoints, request shapes, error codes.
+  </Card>
+</CardGroup>

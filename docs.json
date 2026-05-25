@@ -30,7 +30,8 @@
               "concepts/ceremony",
               "concepts/signing",
               "concepts/error-envelope",
-              "concepts/attestation"
+              "concepts/attestation",
+              "concepts/service-directory"
             ]
           }
         ]
@@ -54,7 +55,8 @@
               "guides/rotate-keys",
               "guides/revoke-an-account",
               "guides/rate-limiting",
-              "guides/deploy-cloudflare-worker"
+              "guides/deploy-cloudflare-worker",
+              "guides/list-on-the-registry"
             ]
           }
         ]
@@ -130,7 +132,8 @@
             "group": "Reference",
             "pages": [
               "reference/well-known-afauth",
-              "reference/error-codes"
+              "reference/error-codes",
+              "reference/registry-api"
             ]
           }
         ]

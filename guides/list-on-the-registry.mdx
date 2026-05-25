@@ -1,0 +1,187 @@
+---
+title: "List your service on registry.afauth.org"
+description: "Step-by-step: prove control of your discovery host, submit a listing, manage it over time."
+---
+
+This guide walks you through registering your service on the canonical AFAuth service directory at [registry.afauth.org](https://registry.afauth.org). The whole flow takes ~5 minutes once you can publish a file at your discovery host.
+
+<Note>
+Listing is **opt-in**. The protocol does not require it. See [The service directory](/concepts/service-directory) for what a listing does and doesn't mean.
+</Note>
+
+## Before you start
+
+You need:
+
+1. **A live AFAuth discovery document** at `https://your-host/.well-known/afauth`. If you don't have one yet, see the [/.well-known/afauth reference](/reference/well-known-afauth).
+2. **The ability to publish a file** at `https://your-host/.well-known/afauth-registry-proof` (a single short text file).
+3. **A `service_did` declared in your discovery document.** `did:web:your-host` is the recommended form (and is the only form that carries a DNS anchor; `did:key` is also accepted but is rendered with a "no domain anchor" indicator on browse interfaces).
+
+## The four steps
+
+<Steps>
+
+<Step title="Request a challenge">
+
+Ask the directory for a one-time challenge token bound to your discovery host:
+
+```bash
+curl -s -X POST https://registry.afauth.org/v1/listings/challenge \
+  -H 'Content-Type: application/json' \
+  -d '{ "discovery_url": "https://api.example.com/.well-known/afauth" }'
+```
+
+Response:
+
+```json
+{
+  "challenge_token": "ch_01HXYZ...",
+  "proof_url":       "https://api.example.com/.well-known/afauth-registry-proof",
+  "expires_at":      "2026-05-25T15:30:00Z"
+}
+```
+
+The challenge is **single-use** and **expires in 30 minutes.**
+
+</Step>
+
+<Step title="Publish the challenge token at the proof URL">
+
+Make `proof_url` respond with HTTP 200, `Content-Type: text/plain`, and the **bare challenge token** as the body. No surrounding JSON, no quotes, no trailing newline.
+
+```text
+ch_01HXYZ...
+```
+
+Verify locally before submitting:
+
+```bash
+curl -s https://api.example.com/.well-known/afauth-registry-proof
+# ch_01HXYZ...
+```
+
+The body must equal the `challenge_token` byte-for-byte.
+
+<Tip>
+For static hosts (S3, Cloudflare Pages, GitHub Pages, Vercel) just upload a plain text file at the right path. For dynamic services, add a route that returns the token from an env var.
+</Tip>
+
+</Step>
+
+<Step title="Submit the listing">
+
+Tell the directory you've published the proof. It will fetch `proof_url`, fetch your discovery document, validate both, and create the listing:
+
+```bash
+curl -s -X POST https://registry.afauth.org/v1/listings \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "discovery_url":   "https://api.example.com/.well-known/afauth",
+    "challenge_token": "ch_01HXYZ...",
+    "title":           "Example Photo Storage",
+    "description":     "AFAuth-supported photo storage for agents.",
+    "tags":            ["productivity", "storage"]
+  }'
+```
+
+`title`, `description`, and `tags` are optional and shown on the [browse page](https://registry.afauth.org).
+
+On success you get a **session token** scoped to your `service_did`:
+
+```json
+{
+  "service_did":   "did:web:api.example.com",
+  "session_token": "sess_01HABC...",
+  "expires_at":    "2026-06-01T15:30:00Z"
+}
+```
+
+Session tokens are bearer credentials and **expire in 7 days**. Treat them like API keys — secret, short-lived, scoped to a single listing.
+
+You can now remove the proof file from `/.well-known/afauth-registry-proof` if you want; the directory does not re-fetch it except when you re-challenge.
+
+</Step>
+
+<Step title="Manage the listing with the session token">
+
+Update writeable fields with `PATCH`:
+
+```bash
+curl -s -X PATCH https://registry.afauth.org/v1/listings/did:web:api.example.com \
+  -H 'Authorization: Bearer sess_01HABC...' \
+  -H 'Content-Type: application/json' \
+  -d '{ "tags": ["productivity", "storage", "photos"] }'
+```
+
+Only `title`, `description`, and `tags` are writeable. To change your discovery URL you must `DELETE` the existing listing and re-register from the new host.
+
+Withdraw the listing (soft-delete; the record stays so mirrors converge):
+
+```bash
+curl -s -X DELETE https://registry.afauth.org/v1/listings/did:web:api.example.com \
+  -H 'Authorization: Bearer sess_01HABC...'
+```
+
+</Step>
+
+</Steps>
+
+## What if I lose the session token?
+
+Repeat steps 1–3 with the same `discovery_url`. The directory recognises that a listing already exists for that DID, **revokes all prior session tokens**, and issues you a fresh one.
+
+The recovery path is identical to the initial flow: regaining host control regains the listing. This is the [§4.3 re-challenge path](https://github.com/AFAuthHQ/spec/blob/main/spec/directory.md#43-re-challenge-on-session-expiry-or-recovery).
+
+## What if someone hostile gets host control?
+
+If your discovery host is compromised and the attacker submits a hostile listing, the same recovery mechanism works the moment you regain control. Re-challenge from the recovered host, and all prior sessions are revoked — including the attacker's.
+
+The directory's authority model is exactly the host's authority. There is no second account, no recovery email, no support channel that can override host control.
+
+## How the directory keeps your listing fresh
+
+Once a day, the directory re-fetches your discovery document. If it fails to validate three days in a row, the listing transitions to `stale` status. Stale listings remain visible (with `status: "stale"`) for 30 days before being soft-deleted. A successful fetch at any point resets the failure counter.
+
+You don't need to do anything — just keep `/.well-known/afauth` reachable and valid. If you take it down deliberately, use `DELETE` to soft-delete; the stale-then-deleted path is for unintended outages.
+
+See [§7 revalidation](https://github.com/AFAuthHQ/spec/blob/main/spec/directory.md#7-revalidation-and-soft-delete) for the full state machine.
+
+## Rate limits
+
+The directory enforces some abuse limits per IP, listed in the [API reference](/reference/registry-api#rate-limits). For ordinary registration and management, you won't notice them. They only kick in if something is trying to spam the directory.
+
+## Errors you might hit
+
+| Code | Meaning | Fix |
+|---|---|---|
+| `invalid_challenge`       | Challenge expired (>30 min old) or already used | Request a fresh challenge. |
+| `proof_fetch_failed`      | The directory couldn't reach `proof_url`        | Check the URL is publicly reachable over HTTPS; check your firewall. |
+| `proof_mismatch`          | The body at `proof_url` does not equal the token | Ensure the file contains *only* the token — no surrounding whitespace, JSON, or HTML. |
+| `discovery_fetch_failed`  | The directory couldn't reach your discovery URL | Same as above, applied to `/.well-known/afauth`. |
+| `discovery_invalid`       | Your discovery document failed schema validation | See [`schemas/well-known.json`](https://github.com/AFAuthHQ/spec/blob/main/schemas/well-known.json). |
+| `discovery_did_mismatch`  | Your discovery document's `service_did` (a `did:web:host`) does not match the discovery host | Either correct the DID, or move discovery to the host the DID names. |
+| `conflict`                | A different listing already claims this host or DID | If it's a stale entry of yours, re-challenge to take it back; otherwise contact the operator. |
+
+Every error response uses a structured envelope:
+
+```json
+{
+  "error": {
+    "code":    "proof_mismatch",
+    "message": "Proof body does not match challenge token"
+  }
+}
+```
+
+See [Error codes](/reference/error-codes) for the full envelope contract.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="API reference" icon="code" href="/reference/registry-api">
+    All endpoints, request and response shapes, query parameters.
+  </Card>
+  <Card title="What the directory is" icon="circle-info" href="/concepts/service-directory">
+    Background, governance, federation, identity model.
+  </Card>
+</CardGroup>

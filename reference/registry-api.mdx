@@ -1,0 +1,272 @@
+---
+title: "Registry API"
+description: "Endpoints at registry.afauth.org/v1 — request shapes, responses, errors."
+---
+
+The directory exposes a small HTTP API at `registry.afauth.org/v1`. Write endpoints require proof of control of the discovery host (a one-time challenge + ~30-min token + 7-day session); read endpoints are unauthenticated and CORS-open for browser-based aggregators.
+
+<Note>
+This page is a reference. For the step-by-step walkthrough, see
+[List your service on registry.afauth.org](/guides/list-on-the-registry).
+</Note>
+
+## Base URL
+
+```
+https://registry.afauth.org/v1
+```
+
+All requests and responses are JSON (`application/json`). All URLs are HTTPS.
+
+## Endpoints at a glance
+
+| Method | Path                                | Auth                     | Purpose |
+|---|---|---|---|
+| `POST` | `/listings/challenge`               | none                     | Request a host-control challenge. |
+| `POST` | `/listings`                         | challenge token in body  | Submit (or re-register) a listing; returns a session token. |
+| `PATCH`  | `/listings/{service_did}`         | `Bearer <session_token>` | Update writeable fields (`title`, `description`, `tags`). |
+| `DELETE` | `/listings/{service_did}`         | `Bearer <session_token>` | Soft-delete the listing. |
+| `GET`    | `/listings`                       | none                     | Paginated list with filters. |
+| `GET`    | `/listings/{service_did}`         | none                     | Fetch a single listing. |
+
+---
+
+## `POST /v1/listings/challenge`
+
+Request a one-time challenge bound to a discovery host.
+
+### Request
+
+```json
+{
+  "discovery_url": "https://api.example.com/.well-known/afauth"
+}
+```
+
+| Field           | Type   | Notes                                                         |
+|---|---|---|
+| `discovery_url` | string | Must be `https://`. Host is derived from this URL.            |
+
+### Response — 200 OK
+
+```json
+{
+  "challenge_token": "ch_01HXYZ...",
+  "proof_url":       "https://api.example.com/.well-known/afauth-registry-proof",
+  "expires_at":      "2026-05-25T15:30:00Z"
+}
+```
+
+Challenge tokens are single-use and expire 30 minutes after issuance.
+
+---
+
+## `POST /v1/listings`
+
+Verify the challenge proof and create (or re-register) a listing.
+
+### Request
+
+```json
+{
+  "discovery_url":   "https://api.example.com/.well-known/afauth",
+  "challenge_token": "ch_01HXYZ...",
+  "title":           "Example Photo Storage",
+  "description":     "AFAuth-supported photo storage for agents.",
+  "tags":            ["productivity", "storage"]
+}
+```
+
+| Field             | Type     | Required | Notes |
+|---|---|---|---|
+| `discovery_url`   | string   | yes      | Must match the URL the challenge was issued for. |
+| `challenge_token` | string   | yes      | The unused, unexpired token from `/challenge`. |
+| `title`           | string   | no       | ≤120 chars. |
+| `description`    | string   | no       | ≤500 chars. |
+| `tags`            | string[] | no       | ≤20 entries, ≤40 chars each. |
+
+### Server-side flow
+
+1. Validate that the challenge exists, is unexpired, and was issued for the same `discovery_url`.
+2. Consume the challenge (it cannot be reused).
+3. Fetch `proof_url = https://{host}/.well-known/afauth-registry-proof` over HTTPS. The body must be `text/plain` and equal the `challenge_token` byte-for-byte.
+4. Fetch `discovery_url` over HTTPS and validate against [`schemas/well-known.json`](https://github.com/AFAuthHQ/spec/blob/main/schemas/well-known.json).
+5. If the discovery doc's `service_did` is a `did:web:host`, the host portion must equal the discovery host.
+6. If a listing already exists for that `service_did` from the same host, this is the [re-challenge path](/guides/list-on-the-registry#what-if-i-lose-the-session-token): prior session tokens are revoked and a new one issued.
+7. If a listing already exists from a *different* host, the request is rejected as a `conflict`.
+
+### Response — 201 Created (new) / 200 OK (re-challenge)
+
+```json
+{
+  "service_did":   "did:web:api.example.com",
+  "session_token": "sess_01HABC...",
+  "expires_at":    "2026-06-01T15:30:00Z"
+}
+```
+
+Session tokens are bearer credentials and expire in 7 days. Treat them like API keys.
+
+---
+
+## `PATCH /v1/listings/{service_did}`
+
+Update the writeable fields of a listing.
+
+### Request
+
+```http
+PATCH /v1/listings/did:web:api.example.com HTTP/1.1
+Host: registry.afauth.org
+Authorization: Bearer sess_01HABC...
+Content-Type: application/json
+
+{ "tags": ["productivity", "storage", "photos"] }
+```
+
+| Field         | Type     | Writeable | Notes |
+|---|---|---|---|
+| `title`       | string   | yes       | ≤120 chars. |
+| `description` | string   | yes       | ≤500 chars. |
+| `tags`        | string[] | yes       | ≤20 entries. |
+| Anything else | —        | no        | Unknown fields rejected with `invalid_request`. |
+
+To change `discovery_url`, soft-delete the existing listing and re-register from the new host.
+
+### Response — 200 OK
+
+The full listing record after the update (same shape as `GET /v1/listings/{service_did}`).
+
+---
+
+## `DELETE /v1/listings/{service_did}`
+
+Soft-delete the listing. The record's `status` becomes `deleted` and it disappears from default list responses, but persists so mirrors converge.
+
+```http
+DELETE /v1/listings/did:web:api.example.com HTTP/1.1
+Host: registry.afauth.org
+Authorization: Bearer sess_01HABC...
+```
+
+### Response — 204 No Content
+
+Soft-deleted listings reappear in `GET /v1/listings?include_deleted=true` with `status: "deleted"`. Hard-erase (removing the record entirely) is reserved for unlawful content under the [take-down policy](https://registry.afauth.org/policy).
+
+---
+
+## `GET /v1/listings`
+
+Cursor-paginated list of listings.
+
+### Query parameters
+
+| Param             | Type                          | Default | Notes |
+|---|---|---|---|
+| `cursor`          | string                        | —       | Opaque server-issued continuation token. Submit unmodified. |
+| `limit`           | integer (1–100)               | 50      | Max page size. |
+| `search`          | string                        | —       | Case-insensitive substring match on `title` and `description`. |
+| `tag`             | string                        | —       | Returns listings whose `tags` include this exact tag. |
+| `updated_since`   | RFC 3339 datetime             | —       | Returns listings with `updated_at >= updated_since`. |
+| `status`          | `active`/`stale`/`deleted`    | —       | Filter by status. |
+| `include_deleted` | boolean                       | false   | When `true`, soft-deleted listings are included. |
+
+### Response — 200 OK
+
+```json
+{
+  "listings": [
+    {
+      "service_did":     "did:web:api.example.com",
+      "discovery_url":   "https://api.example.com/.well-known/afauth",
+      "discovery_doc":   { "afauth_version": "0.1", "service_did": "did:web:api.example.com", "endpoints": { ... }, "signature_algorithms": ["ed25519"] },
+      "fetched_at":      "2026-05-25T14:00:00Z",
+      "first_listed_at": "2026-04-01T09:12:33Z",
+      "updated_at":      "2026-05-25T14:00:00Z",
+      "status":          "active",
+      "tags":            ["productivity", "storage"],
+      "title":           "Example Photo Storage",
+      "description":     "AFAuth-supported photo storage for agents."
+    }
+  ],
+  "next_cursor": "MjAyNi0wNS0yNVQxNDow..."
+}
+```
+
+`next_cursor` is `null` when there are no more pages. The cursor encoding is unspecified and may change without notice — submit it unmodified.
+
+### Cache headers
+
+- `Cache-Control: public, max-age=30, s-maxage=120`
+- `Access-Control-Allow-Origin: *`
+
+Friendly to mirrors that poll with `updated_since` and to browser-based aggregators.
+
+---
+
+## `GET /v1/listings/{service_did}`
+
+Single listing. The path parameter is the full DID (e.g. `did:web:api.example.com`). Colons are valid in URL path segments; no encoding is required.
+
+### Response — 200 OK
+
+Same shape as a single entry in the list response above.
+
+### Response — 404 Not Found
+
+If no listing exists for that `service_did`. Soft-deleted listings still return 200 with `status: "deleted"` (consistent with the list endpoint's `include_deleted` behaviour).
+
+### Cache headers
+
+- `Cache-Control: public, max-age=60, s-maxage=300`
+- `Access-Control-Allow-Origin: *`
+
+---
+
+## Errors
+
+Every non-2xx response uses a structured envelope:
+
+```json
+{
+  "error": {
+    "code":    "proof_mismatch",
+    "message": "Proof body does not match challenge token",
+    "details": { "url": "https://..." }
+  }
+}
+```
+
+| Code                       | HTTP | Meaning |
+|---|---|---|
+| `invalid_request`          | 400  | Body or query parameters failed validation. |
+| `invalid_challenge`        | 400  | Challenge token unknown, expired, or already used. |
+| `proof_fetch_failed`       | 400  | Could not reach `proof_url` over HTTPS. |
+| `proof_mismatch`           | 400  | Challenge `discovery_url` doesn't match, or proof body doesn't equal the token. |
+| `discovery_fetch_failed`   | 400  | Could not reach the submitted `discovery_url`. |
+| `discovery_invalid`        | 400  | Discovery document failed schema validation. |
+| `discovery_did_mismatch`   | 400  | `did:web:host` does not match the discovery host. |
+| `unauthorized`             | 401  | Missing or invalid bearer token. |
+| `forbidden`                | 403  | Session token is bound to a different `service_did`. |
+| `not_found`                | 404  | Listing doesn't exist. |
+| `conflict`                 | 409  | Host or DID already taken by a different listing. |
+| `rate_limited`             | 429  | See rate-limit table below. The `Retry-After` header tells you how long to wait. |
+| `challenge_already_used`   | 409  | Concurrent reuse race — request a fresh challenge. |
+| `internal_error`           | 500  | Unexpected. Retry, then report. |
+
+## Rate limits
+
+Per-IP, fixed-window. The directory returns `429 rate_limited` with a `Retry-After` header (in seconds) when a bucket overflows.
+
+| Endpoint group                 | Limit          |
+|---|---|
+| `POST /v1/listings/challenge`  | 30 / minute    |
+| `POST /v1/listings`            | 10 / minute    |
+| `PATCH/DELETE /v1/listings/…`  | 30 / minute    |
+| `GET /v1/listings*`            | 600 / minute   |
+
+In addition, **per-host** challenge issuance is capped at 10 active challenges per hour — anyone can *request* a challenge for your host, but only you (the host's controller) can *satisfy* one.
+
+## Federation
+
+The schema and the surface described above are public — anyone may run a mirror or a private directory implementing the same contract. The schema is at [`schemas/listing.json`](https://github.com/AFAuthHQ/spec/blob/main/schemas/listing.json); the reference implementation is at [`AFAuthHQ/registry`](https://github.com/AFAuthHQ/registry).
