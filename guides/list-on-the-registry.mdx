@@ -35,11 +35,16 @@ Response:
 
 ```json
 {
-  "challenge_token": "ch_01HXYZ...",
+  "challenge_token": "ch_AbCd1ef-gHIj_klmN0pqRs",
   "proof_url":       "https://api.example.com/.well-known/afauth-registry-proof",
   "expires_at":      "2026-05-25T15:30:00Z"
 }
 ```
+
+<Note>
+The token format is `ch_` followed by 22 url-safe-base64 characters
+(128 bits of entropy). Treat it as **opaque** — don't try to parse it.
+</Note>
 
 The challenge is **single-use** and **expires in 30 minutes.**
 
@@ -50,14 +55,14 @@ The challenge is **single-use** and **expires in 30 minutes.**
 Make `proof_url` respond with HTTP 200, `Content-Type: text/plain`, and the **bare challenge token** as the body. No surrounding JSON, no quotes, no trailing newline.
 
 ```text
-ch_01HXYZ...
+ch_AbCd1ef-gHIj_klmN0pqRs
 ```
 
 Verify locally before submitting:
 
 ```bash
 curl -s https://api.example.com/.well-known/afauth-registry-proof
-# ch_01HXYZ...
+# ch_AbCd1ef-gHIj_klmN0pqRs
 ```
 
 The body must equal the `challenge_token` byte-for-byte.
@@ -77,7 +82,7 @@ curl -s -X POST https://registry.afauth.org/v1/listings \
   -H 'Content-Type: application/json' \
   -d '{
     "discovery_url":   "https://api.example.com/.well-known/afauth",
-    "challenge_token": "ch_01HXYZ...",
+    "challenge_token": "ch_AbCd1ef-gHIj_klmN0pqRs",
     "title":           "Example Photo Storage",
     "description":     "AFAuth-supported photo storage for agents.",
     "tags":            ["productivity", "storage"]
@@ -91,7 +96,7 @@ On success you get a **session token** scoped to your `service_did`:
 ```json
 {
   "service_did":   "did:web:api.example.com",
-  "session_token": "sess_01HABC...",
+  "session_token": "sess_T1uvWxYz3456_AbCdEfGhIj",
   "expires_at":    "2026-06-01T15:30:00Z"
 }
 ```
@@ -108,7 +113,7 @@ Update writeable fields with `PATCH`:
 
 ```bash
 curl -s -X PATCH https://registry.afauth.org/v1/listings/did:web:api.example.com \
-  -H 'Authorization: Bearer sess_01HABC...' \
+  -H 'Authorization: Bearer sess_T1uvWxYz3456_AbCdEfGhIj' \
   -H 'Content-Type: application/json' \
   -d '{ "tags": ["productivity", "storage", "photos"] }'
 ```
@@ -119,7 +124,7 @@ Withdraw the listing (soft-delete; the record stays so mirrors converge):
 
 ```bash
 curl -s -X DELETE https://registry.afauth.org/v1/listings/did:web:api.example.com \
-  -H 'Authorization: Bearer sess_01HABC...'
+  -H 'Authorization: Bearer sess_T1uvWxYz3456_AbCdEfGhIj'
 ```
 
 </Step>
@@ -140,7 +145,7 @@ The directory's authority model is exactly the host's authority. There is no sec
 
 ## How the directory keeps your listing fresh
 
-Once a day, the directory re-fetches your discovery document. If it fails to validate three days in a row, the listing transitions to `stale` status. Stale listings remain visible (with `status: "stale"`) for 30 days before being soft-deleted. A successful fetch at any point resets the failure counter.
+By default, the directory re-fetches your discovery document once a day. After **three consecutive revalidation failures** (i.e., three days in a row at the default cadence), the listing transitions to `stale` status. Stale listings remain visible (with `status: "stale"`) for 30 days before being soft-deleted. A successful fetch at any point resets the failure counter.
 
 You don't need to do anything — just keep `/.well-known/afauth` reachable and valid. If you take it down deliberately, use `DELETE` to soft-delete; the stale-then-deleted path is for unintended outages.
 

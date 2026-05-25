@@ -51,7 +51,7 @@ Request a one-time challenge bound to a discovery host.
 
 ```json
 {
-  "challenge_token": "ch_01HXYZ...",
+  "challenge_token": "ch_AbCd1ef-gHIj_klmN0pqRs",
   "proof_url":       "https://api.example.com/.well-known/afauth-registry-proof",
   "expires_at":      "2026-05-25T15:30:00Z"
 }
@@ -70,7 +70,7 @@ Verify the challenge proof and create (or re-register) a listing.
 ```json
 {
   "discovery_url":   "https://api.example.com/.well-known/afauth",
-  "challenge_token": "ch_01HXYZ...",
+  "challenge_token": "ch_AbCd1ef-gHIj_klmN0pqRs",
   "title":           "Example Photo Storage",
   "description":     "AFAuth-supported photo storage for agents.",
   "tags":            ["productivity", "storage"]
@@ -100,7 +100,7 @@ Verify the challenge proof and create (or re-register) a listing.
 ```json
 {
   "service_did":   "did:web:api.example.com",
-  "session_token": "sess_01HABC...",
+  "session_token": "sess_T1uvWxYz3456_AbCdEfGhIj",
   "expires_at":    "2026-06-01T15:30:00Z"
 }
 ```
@@ -118,7 +118,7 @@ Update the writeable fields of a listing.
 ```http
 PATCH /v1/listings/did:web:api.example.com HTTP/1.1
 Host: registry.afauth.org
-Authorization: Bearer sess_01HABC...
+Authorization: Bearer sess_T1uvWxYz3456_AbCdEfGhIj
 Content-Type: application/json
 
 { "tags": ["productivity", "storage", "photos"] }
@@ -146,7 +146,7 @@ Soft-delete the listing. The record's `status` becomes `deleted` and it disappea
 ```http
 DELETE /v1/listings/did:web:api.example.com HTTP/1.1
 Host: registry.afauth.org
-Authorization: Bearer sess_01HABC...
+Authorization: Bearer sess_T1uvWxYz3456_AbCdEfGhIj
 ```
 
 ### Response — 204 No Content
