@@ -1,0 +1,167 @@
+---
+title: "Accept afauth-trust attestations"
+description: "Configure your service to accept short-lived JWTs from trust.afauth.org as a signal that a human stands behind an agent."
+---
+
+This guide turns on `afauth-trust` attestation support for an AFAuth service. After this, agents that link to a human at [trust.afauth.org](https://trust.afauth.org) can present an offline-verifiable JWT on each request, and your service can gate features on that signal — either as a softer "free tier" filter (`unclaimed_mode = "free"` with attestation-aware quotas) or as a hard requirement (`unclaimed_mode = "attested_only"`).
+
+<Note>
+Listing `afauth-trust` is one of several supported attestor configurations. See [the trust attestor concept](/concepts/trust-attestor) for what a trust attestation actually proves, and [the broader attestation concept](/concepts/attestation) for HMAC + multi-attestor patterns.
+</Note>
+
+## Before you start
+
+You need:
+
+1. **A working AFAuth service** using `@afauthhq/server` (or any conformant implementation). If you don't yet, start at [Accept AFAuth on your service](/quickstart-service).
+2. **A `service_did`** declared in your discovery document — trust attestations are bound to this audience.
+
+That's it. There's no enrollment, no API key, no registration with `trust.afauth.org`. You consume a public JWKS document; no provisioning is required.
+
+## The three steps
+
+<Steps>
+
+<Step title="Declare afauth-trust in your discovery document">
+
+Add `afauth-trust` to your `billing.accepted_attestors` list. Choose an `unclaimed_mode` based on how strict you want the gate to be.
+
+```json
+{
+  "afauth_version": "0.1",
+  "service_did": "did:web:api.example.com",
+  "endpoints": { ... },
+  "signature_algorithms": ["ed25519"],
+  "billing": {
+    "unclaimed_mode": "attested_only",
+    "accepted_attestors": ["afauth-trust"]
+  }
+}
+```
+
+| `unclaimed_mode` | Behaviour |
+|---|---|
+| `"free"`           | Pre-claim signup is allowed without attestation. If an agent presents one, the server still validates it (rejecting invalid tokens) and your application code can read it for quota tiering. |
+| `"attested_only"`  | Pre-claim signup is rejected unless a valid attestation from one of `accepted_attestors` is present. `401 attestation_required` on rejection. No account row is created on failure. |
+| `"denied"`         | Pre-claim signup is rejected outright; attestations are ignored. |
+
+If you want both `afauth-trust` and another attestor (e.g., an internal HMAC or `stripe-projects` once you've enrolled), list them together — the server tries each accepted issuer in turn.
+
+</Step>
+
+<Step title="Configure JwksAttestor in your Server">
+
+`@afauthhq/server` (`0.2.0+`) ships a `trustAttestor()` factory that bakes in the `afauth-trust` issuer, the published JWKS URL, and EdDSA — one line in your `Server` config:
+
+```typescript
+import {
+  MemoryAccountStore,
+  MemoryNonceStore,
+  MemoryRevocationList,
+  Server,
+  trustAttestor,
+} from "@afauthhq/server";
+
+const server = new Server({
+  serviceDid: "did:web:api.example.com",
+  baseUrl: "https://api.example.com",
+
+  // ...your nonce store, account store, revocation list, recipients...
+  nonceStore: new MemoryNonceStore(),
+  accounts: new MemoryAccountStore(),
+  revocationList: new MemoryRevocationList(),
+
+  // Hook the attestor in.
+  attestor: trustAttestor(),
+
+  discovery: {
+    afauth_version: "0.1",
+    service_did: "did:web:api.example.com",
+    endpoints: { /* ... */ },
+    signature_algorithms: ["ed25519"],
+    billing: {
+      unclaimed_mode: "attested_only",
+      accepted_attestors: ["afauth-trust"],
+    },
+  },
+});
+```
+
+For staging or local dev (e.g. running the trust attestor against a tunnelled endpoint), `trustAttestor({ jwksUrl: "..." })` overrides the JWKS URL while keeping the rest of the AFAP-pinned shape. The explicit form is also available — `new JwksAttestor({ iss: "afauth-trust", jwksUrl, algorithms: ["EdDSA"] })` — but rarely needed.
+
+The `Verifier` automatically:
+
+- Reads `AFAuth-Attestation` from the request headers.
+- Verifies the JWT's signature against the JWKS (with caching + rotation handled by `jose`'s `createRemoteJWKSet`).
+- Validates `iss == "afauth-trust"`, `aud == your service_did`, `sub == signing DID`, and `exp` in the future.
+- Rejects with `401 invalid_attestation` (malformed / bad signature / wrong `aud` / expired) or `401 attestation_required` (missing under `attested_only`).
+
+Use multiple attestors — for example accepting an internal HMAC alongside `afauth-trust` — by composing them with [`MultiAttestor`](/concepts/attestation#three-attestor-classes).
+
+</Step>
+
+<Step title="Use the verification claim in your application">
+
+When the verifier accepts an attestation, the `verification` claim is available to your application code. Use it however your policy needs — gate features, tier rate limits, log it.
+
+```typescript
+import type { AttestationClaims } from "@afauthhq/server";
+
+function quotaFor(claims: AttestationClaims | null): number {
+  if (!claims) return 0;                  // attested_only → never reached
+  switch (claims.verification) {
+    case "payment": return 10_000;        // cardable human on the hook
+    case "oauth":   return 1_000;         // OAuth-verified human
+    case "email":   return 100;           // email-verified human
+    default:        return 100;           // unknown values: handle as the weakest known signal
+  }
+}
+```
+
+The verification rank is **your** policy. The protocol takes no opinion on whether `payment > oauth > email` or any other ordering — each service decides what each signal unlocks. The trust attestor always emits the strongest method the linked human has on file.
+
+</Step>
+
+</Steps>
+
+## Test your integration end to end
+
+Once configured, you can validate the full path locally with the reference CLI from a fresh agent identity:
+
+```bash
+afauth init                            # generate a keypair
+afauth signup https://api.example.com  # should fail with 401 attestation_required
+```
+
+Then drive the link flow (see [Link your agent to a human](/guides/link-to-a-human)) to receive a trust attestation, and retry the signed request. The agent's request will now carry an `AFAuth-Attestation` header and your service will accept it.
+
+## Failure modes you might hit
+
+| Code                       | Cause | Fix |
+|---|---|---|
+| `attestation_required`     | `unclaimed_mode = "attested_only"` and no `AFAuth-Attestation` header. | Agent needs to mint one against `trust.afauth.org/v1/token` and resend. |
+| `invalid_attestation`      | JWT signature failed, `iss` ≠ `afauth-trust`, `aud` ≠ your `service_did`, `sub` ≠ signing DID, or `exp` is past. | Mint a fresh JWT (≤ 900 s expiry). Check your `service_did` matches the `aud` claim byte-for-byte. |
+| Verification cache stale   | A new `kid` was just rotated and your `JwksAttestor`'s cache hasn't refreshed. | `jose`'s `createRemoteJWKSet` refreshes on unknown `kid`; if you've layered an additional cache, drop it. The trust attestor pre-announces new `kid`s 900+ seconds before first use. |
+
+## Operational notes
+
+- **Offline verification means uptime is bounded by your service.** A brief `trust.afauth.org` outage does not affect verification of already-issued tokens — only the *issuance* of new ones (and only for the duration of the outage).
+- **Don't cache attestations beyond their `exp`.** §10 explicitly forbids it. The 900-second cap is the revocation window.
+- **You do not need to pin `kid`.** New `kid`s are published 900+ seconds before first use; `JwksAttestor` follows the JWKS, no manual key management on your side.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    JWKS, link flow, token endpoint, errors.
+  </Card>
+  <Card title="The attestation concept" icon="circle-info" href="/concepts/attestation">
+    HMAC, MultiAttestor, the full §10 surface.
+  </Card>
+  <Card title="Spec §10" icon="book" href="https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#10-optional-agent-attestation">
+    Normative attestation rules.
+  </Card>
+  <Card title="List on the registry" icon="list-check" href="/guides/list-on-the-registry">
+    Once you accept attestations, get discovered.
+  </Card>
+</CardGroup>

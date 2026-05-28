@@ -31,6 +31,7 @@
               "concepts/signing",
               "concepts/error-envelope",
               "concepts/attestation",
+              "concepts/trust-attestor",
               "concepts/service-directory"
             ]
           }
@@ -43,7 +44,8 @@
             "group": "Build an agent",
             "pages": [
               "guides/build-an-agent-typescript",
-              "guides/build-an-agent-cli"
+              "guides/build-an-agent-cli",
+              "guides/link-to-a-human"
             ]
           },
           {
@@ -56,7 +58,8 @@
               "guides/revoke-an-account",
               "guides/rate-limiting",
               "guides/deploy-cloudflare-worker",
-              "guides/list-on-the-registry"
+              "guides/list-on-the-registry",
+              "guides/accept-afauth-trust"
             ]
           }
         ]
@@ -133,7 +136,8 @@
             "pages": [
               "reference/well-known-afauth",
               "reference/error-codes",
-              "reference/registry-api"
+              "reference/registry-api",
+              "reference/trust-api"
             ]
           }
         ]
@@ -149,6 +153,10 @@
       {
         "label": "Registry",
         "href": "https://registry.afauth.org"
+      },
+      {
+        "label": "Trust",
+        "href": "https://trust.afauth.org"
       },
       {
         "label": "GitHub",

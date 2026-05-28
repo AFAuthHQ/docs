@@ -44,7 +44,7 @@ The TypeScript SDK ships three implementations of `Attestor`:
 | Class | Verifies | Use for |
 |---|---|---|
 | `HmacAttestor` | HS256 JWTs against a shared secret | First-party service-operator attestors (you mint the token yourself) |
-| `JwksAttestor` | Asymmetric JWTs against a JWKS URL | Platform / commerce attestors (Stripe, Entra, etc.) |
+| `JwksAttestor` | Asymmetric JWTs against a JWKS URL | The default trust attestor (`afauth-trust`); platform / commerce attestors (Stripe, Entra, etc.) |
 | `MultiAttestor` | Dispatches by `iss` claim | A real service that accepts multiple attestor sources |
 
 ```typescript
@@ -68,6 +68,22 @@ const attestor = new MultiAttestor([
 ```
 
 Pass the composite `attestor` to `Server`; the `attested_only` enforcement happens automatically. Full recipe: [`examples/recipes/attestor.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/attestor.ts).
+
+## `afauth-trust` — the default trust attestor
+
+Platform and commerce attestors (Entra, Stripe, etc.) won't integrate with a working-draft protocol at zero adoption, which would leave `attested_only` unreachable from a clean v0.1 deployment. To close that gap, [AFAP-0006](https://github.com/AFAuthHQ/spec/blob/main/proposals/0006-afauth-trust-attestor.md) reserves `afauth-trust` as a recognized attestor identifier, operated by afauth.org at [`trust.afauth.org`](https://trust.afauth.org).
+
+A trust attestation says **one** thing: the agent DID in `sub` is bound to a human-controlled account verified by the categorical method in the `verification` claim — one of `"email"`, `"oauth"`, `"payment"`. The token carries **no PII** — the consuming service gets a signal, not an identity. Full model: [the trust attestor](/concepts/trust-attestor).
+
+`@afauthhq/server` ships a one-line `trustAttestor()` factory that pre-pins the AFAP-0006 issuer, JWKS URL, and algorithm:
+
+```typescript
+import { trustAttestor } from "@afauthhq/server";
+
+const attestor = trustAttestor();
+```
+
+Then list `afauth-trust` in your discovery document's `billing.accepted_attestors`. Full walkthrough: [Accept `afauth-trust` attestations](/guides/accept-afauth-trust).
 
 ## `unclaimed_mode = "attested_only"`
 
@@ -96,6 +112,8 @@ Services that accept attestations MUST validate the attestor's signature against
 
 ## Further reading
 
+- [The trust attestor](/concepts/trust-attestor) — what `afauth-trust` is, what its JWTs prove, and how `trust.afauth.org` is governed.
+- [Accept `afauth-trust` attestations](/guides/accept-afauth-trust) — step-by-step service-side configuration.
 - [Spec §10](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#10-optional-agent-attestation) — normative attestation rules.
 - [Spec §9](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#9-billing-declaration) — billing modes including `attested_only`.
 - [Spec §12.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#125-attestation-forgery) — threat model for compromised attestor keys.

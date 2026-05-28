@@ -1,0 +1,211 @@
+---
+title: "Link your agent to a human"
+description: "Use trust.afauth.org so services that require attestation accept your agent."
+---
+
+Some AFAuth services declare `unclaimed_mode = "attested_only"` and require an [attestation](/concepts/attestation) on each signed request — a signal that a verified human stands behind the agent. This guide walks you through producing that signal using the canonical trust attestor at [trust.afauth.org](https://trust.afauth.org).
+
+<Note>
+You only need this for services that accept `afauth-trust` in their `billing.accepted_attestors`. Services that allow `unclaimed_mode = "free"` don't require attestation — your signed request alone suffices.
+</Note>
+
+## How it works
+
+The agent never authenticates the human — the trust attestor does. The flow is a three-leg handoff:
+
+1. **Agent → Trust:** open a link request, get a deep-link URL and a poll URL.
+2. **Human → Trust (browser):** sign in at `trust.afauth.org`, confirm the request.
+3. **Agent ↔ Trust:** poll until confirmed, receive a long-lived **binding token**, and mint short-lived per-service JWTs as needed.
+
+You do this **once** per human/agent pair — the binding token persists (90 days by default). Each per-service JWT is fresh, audience-bound, and ≤ 900 s lived.
+
+## Before you start
+
+You need:
+
+1. **An agent identity** — an Ed25519 keypair and the `did:key` derived from it. `Agent.generate()` (TypeScript) or `afauth init` (CLI) produces one.
+2. **A way to show a URL to a human** — open in the user's browser, print to the terminal, send via your own out-of-band channel, etc.
+3. **The destination `service_did`** for each service you intend to attest against. Read it from the service's `/.well-known/afauth` discovery document.
+
+## The four steps
+
+The `@afauthhq/agent` package ships a [`TrustClient`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/packages/agent/src/trust.ts) that handles the link flow, polling, and per-service token minting. The examples below use it; the [Trust API reference](/reference/trust-api) documents the wire surface if you're integrating from another language.
+
+<Steps>
+
+<Step title="Start a link request">
+
+```typescript
+import { Agent, TrustClient } from "@afauthhq/agent";
+
+const agent = await Agent.generate();
+
+const trust = new TrustClient({
+  agentDid:        agent.did,
+  agentPublicKey:  agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+});
+
+const start = await trust.linkStart({
+  label:       "Atlas (research agent)",
+  callbackUrl: "http://127.0.0.1:9876/done",  // loopback only; optional
+});
+
+// {
+//   req_id:     "lr_T1uvWxYz3456_AbCdEfGhIj",
+//   link_url:   "https://trust.afauth.org/link?req=...",
+//   poll_url:   "https://trust.afauth.org/v1/link/poll",
+//   expires_in: 600
+// }
+```
+
+`link_url` is what the human visits. `req_id` is the opaque handle you'll use to poll. The whole request expires in **10 minutes** (`expires_in: 600`) — make sure the human can act within that window.
+
+<Tip>
+For desktop / CLI agents, set `callbackUrl` to a loopback URL — the confirmation page will redirect there after the human confirms, so your agent can detect completion without spinning the poll loop hard. Loopback only (`127.0.0.1` or `localhost`); non-loopback URLs are rejected.
+</Tip>
+
+</Step>
+
+<Step title="Surface the deep link to the human">
+
+How you do this depends on the agent runtime:
+
+- **Server agents with a chat UI:** render `link_url` as a button.
+- **CLI agents:** print the URL and optionally `open` / `xdg-open` it.
+- **Headless agents:** send the URL via your existing notification channel (email, push, Slack, etc.).
+
+The human lands on `trust.afauth.org/link`, signs in if needed (email magic-link, OAuth), reviews the agent label, and clicks confirm.
+
+</Step>
+
+<Step title="Poll for confirmation, get a binding token">
+
+`linkPoll` returns the binding on confirmation, `undefined` while pending, and throws on error:
+
+```typescript
+let binding;
+while (!(binding = await trust.linkPoll(start.req_id))) {
+  await new Promise((r) => setTimeout(r, 2_000));
+}
+
+// Store these somewhere durable. The token is delivered ONCE.
+saveBindingToken(binding.binding_token, binding.binding_token_expires_at);
+```
+
+The binding token is the agent's secret credential at the trust attestor — treat it like an API key (encrypted at rest, never logged). Binding tokens are long-lived (90 days by default). The human can revoke any binding from `trust.afauth.org/account`.
+
+If you persist the binding and want to skip the link dance on the next run, restore it on construction:
+
+```typescript
+const trust = new TrustClient({
+  agentDid:        agent.did,
+  agentPublicKey:  agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+  binding,                                   // restore from disk
+});
+
+if (!trust.isLinked()) {
+  // binding is expired or absent → start the link flow from step 1
+}
+```
+
+</Step>
+
+<Step title="Mint per-service attestation JWTs">
+
+Whenever you're about to send a signed AFAuth request to a service that accepts `afauth-trust`, call `token(serviceDid)`. It mints a fresh JWT scoped to that service and caches by audience (refreshed at ~80% of TTL):
+
+```typescript
+const { jwt, verification } = await trust.token("did:web:api.example.com");
+// verification is the strongest method the linked human has on file —
+// "email" | "oauth" | "payment". You usually don't need to look at it;
+// the service reads it from inside the JWT.
+
+const signed = await agent.buildAccountIntrospection({
+  baseUrl: "https://api.example.com",
+});
+
+const res = await fetch(signed.url, {
+  method: signed.method,
+  headers: {
+    ...signed.headers,
+    "AFAuth-Attestation": jwt,
+  },
+});
+```
+
+The service verifies the JWT offline against `trust.afauth.org/.well-known/jwks.json`, checks `aud == service_did` and `sub == signing DID`, and either lets the request through or returns `401 invalid_attestation`. Trust attestor JWTs cap at 900 seconds; never reuse them across audiences.
+
+</Step>
+
+</Steps>
+
+## Handling errors
+
+`TrustClient` throws `TrustHttpError` for upstream failures with helpful predicates:
+
+```typescript
+try {
+  const { jwt } = await trust.token(serviceDid);
+  // ...
+} catch (e) {
+  if (e instanceof TrustHttpError) {
+    if (e.isBindingExpired())       return restartLinkFlow();    // 90+ days old
+    if (e.isBindingRevoked())       return askHumanToReLink();   // human revoked
+    if (e.isVerificationRequired()) return sendHumanToAccount(); // no verification methods
+  }
+  throw e;
+}
+```
+
+The full error surface is documented in the [Trust API reference](/reference/trust-api#errors).
+
+## CLI shortcut
+
+The reference CLI (`v0.3.0+`) wraps the same flow under `afauth trust`:
+
+```bash
+# Bind this agent to a human account. Opens a tiny loopback server so the
+# browser can ping back after the human confirms (use --no-loopback for
+# headless/sandboxed agents). Stores the binding at ~/.afauth/trust.json
+# with chmod 600.
+afauth trust link
+
+# Mint a §10 JWT for a single service. Prints the JWT to stdout.
+afauth trust token did:web:tavily.com
+
+# Use it against an attested_only service in one line.
+afauth signup --attest "$(afauth trust token did:web:tavily.com)" \
+              https://tavily.com
+
+afauth trust status     # cached binding, expiry
+afauth trust forget     # delete the local binding; server-side revocation
+                        # still requires signing in at trust.afauth.org/account
+```
+
+## Recovery
+
+If the binding token is lost or compromised:
+
+1. The human signs in at `trust.afauth.org/account` and revokes the binding.
+2. The agent starts a new link request (step 1 above) — the human confirms it the same way.
+
+Recovery is **always agent-initiated, human-confirmed**. There is no separate "support" path that can override that — the same property that holds for AFAuth account recovery holds here.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="What this signal proves" icon="circle-info" href="/concepts/trust-attestor">
+    The trust attestor model: verification claim, no PII, governance.
+  </Card>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    Endpoint shapes, JWT shape, error codes, rate limits.
+  </Card>
+  <Card title="Attestation concept" icon="badge-check" href="/concepts/attestation">
+    Where `afauth-trust` sits among the four §10 attestor classes.
+  </Card>
+  <Card title="The ceremony" icon="handshake" href="/concepts/ceremony">
+    Trust attestation vs. owner-claim — what each one binds.
+  </Card>
+</CardGroup>

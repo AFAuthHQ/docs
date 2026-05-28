@@ -1,0 +1,105 @@
+---
+title: "The trust attestor"
+description: "What trust.afauth.org is, why a default §10 attestor exists, and what a trust attestation actually proves."
+---
+
+The **trust attestor** at [trust.afauth.org](https://trust.afauth.org) issues short-lived, audience-bound JWTs that signal an agent DID is bound to a human-controlled account. It is the canonical operator of the `afauth-trust` identifier reserved in §10.3 of the protocol.
+
+Consuming services verify trust attestations **offline** against the JWKS published at [`https://trust.afauth.org/.well-known/jwks.json`](https://trust.afauth.org/.well-known/jwks.json) — the trust attestor's availability bounds token *issuance*, not verification of in-flight requests.
+
+<Note>
+The trust attestor is defined in [AFAP-0006](https://github.com/AFAuthHQ/spec/blob/main/proposals/0006-afauth-trust-attestor.md) and recognized normatively at [`spec/core.md` §10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust). The wire shape is pinned by the spec; operator policy (verification flows, abuse handling) is not.
+</Note>
+
+## Why it exists
+
+[§10.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#103-recognized-attestors) recognizes four classes of attestor — *trust*, *platform* (Entra, GCP), *commerce* (Stripe, FIDO AP2, Mastercard), and *service-operator HMAC*. The platform and commerce attestors are operated by parties that will not integrate with a working-draft protocol at zero adoption. Service-operator HMAC is, by definition, first-party — it cannot vouch for an agent across the open ecosystem.
+
+Without a default trust-class attestor, §9.2's [`attested_only`](/concepts/attestation#unclaimed-mode--attested_only) mode is unreachable from a clean v0.1 deployment. The trust attestor closes that bootstrap gap with a neutral, openly-operated option. Long-term, platform and commerce attestors will join §10.3 when ecosystem adoption warrants their attention; until then, `afauth-trust` keeps the surface alive.
+
+## What a trust attestation proves
+
+A trust attestation says **one** thing: the agent DID in the JWT's `sub` is bound to a human-controlled account that completed the verification method named in the `verification` claim.
+
+A trust attestation does **not** mean:
+
+- The human has been identified by name, email, or any other PII (claims carry none).
+- The agent has been audited, reviewed, or endorsed.
+- The agent is reputable or appropriate for any particular service.
+- The human has approved any specific action the agent is about to take.
+
+Trust attestations are categorical signals, not capability grants. Services decide locally what (if anything) each signal unlocks.
+
+## The `verification` claim
+
+The trust attestor emits the **strongest** verification method the linked human has on file at issuance time. Defined values:
+
+| Value | Meaning |
+|---|---|
+| `"email"` | The human authenticated a magic-link sent to an email address they control. |
+| `"oauth"` | The human authenticated via an OAuth identity provider (e.g., Google). |
+| `"payment"` | The human added a payment method (cardable or otherwise). |
+
+Consuming services **MUST ignore** unknown values rather than rejecting the token, so future values can be added without breaking existing verifiers. Services may rank values by their own threat model — the spec takes no opinion on ordering.
+
+## What's *not* in a trust attestation
+
+No PII. The token never contains the underlying email address, OAuth subject, phone number, payment metadata, or government identifier. Consuming services receive a categorical signal — not an identity to log, query, or correlate.
+
+Pairwise `sub` is preserved: §3.3's per-service DID derivation applies to the agent DID the trust attestor relays. The attestor adds no cross-service correlatability beyond what the agent itself chose to expose.
+
+## Wire shape
+
+```
+header: { alg: "EdDSA", typ: "JWT", kid: "<from jwks.json>" }
+claims: {
+  iss: "afauth-trust",
+  aud: "<service_did>",
+  sub: "<agent_did>",
+  iat: <unix>,
+  exp: <iat + ≤900>,
+  verification: "email" | "oauth" | "payment"
+}
+```
+
+- `aud` is pinned to the destination `service_did` — a token issued for service A cannot be replayed against service B.
+- `exp - iat` is capped at 900 seconds. Per-request attestations only; no caching beyond `exp`.
+- `kid` resolves to a key in [`trust.afauth.org/.well-known/jwks.json`](https://trust.afauth.org/.well-known/jwks.json). New keys are published at least one 900-second window before first use so consumer caches refresh without an outage gap.
+
+Full API: [Trust API reference](/reference/trust-api).
+
+## Two-sided flow
+
+The trust attestor sits between two principals:
+
+- **Humans** sign in at `trust.afauth.org`, add verification methods (email today; OAuth and payment scaffolded for v0.2 / v0.3), and confirm a link request initiated by an agent. They can revoke any binding from `/account`.
+- **Agents** start a link request, surface the deep link to the human, poll for confirmation, and then mint per-request audience-bound JWTs against each service.
+
+Walk through the agent side: [Link your agent to a human](/guides/link-to-a-human). Walk through the service side: [Accept `afauth-trust` attestations](/guides/accept-afauth-trust).
+
+## Governance
+
+`trust.afauth.org` is operated by AFAuthHQ in this version. The operator's responsibilities are narrow — running the verification flows, signing JWTs against rotating keys, publishing the JWKS, and revoking bindings on demand.
+
+The protocol acknowledges that afauth.org acts as both spec editor and trust attestor operator at v0.1. If, at a later date, neutrality becomes operationally relevant — for example because platform or commerce attestors require it as a condition of joining §10.3 — a future AFAP may move the trust attestor under a distinct identifier and entity. The wire shape defined by AFAP-0006 is unchanged by that move.
+
+## Federation
+
+The trust attestor identifier is reserved; the *operator* is not. Anyone may run an attestor under a different `iss` — `acme-trust`, `enterprise-corp-trust`, etc. — and ask consuming services to list it in `billing.accepted_attestors`. The default `afauth-trust` exists so a service can start enforcing `attested_only` without bootstrapping a new attestor relationship first; it does not displace alternatives.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Link your agent" icon="link" href="/guides/link-to-a-human">
+    Agent-side walkthrough: start, deep link, poll, mint a JWT.
+  </Card>
+  <Card title="Accept trust attestations" icon="badge-check" href="/guides/accept-afauth-trust">
+    Service-side walkthrough: discovery doc, `JwksAttestor`, policy.
+  </Card>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    Endpoints, request shapes, JWT shape, error codes.
+  </Card>
+  <Card title="Attestation concept" icon="circle-info" href="/concepts/attestation">
+    The broader §10 attestation surface — HMAC, JWKS, multi-attestor.
+  </Card>
+</CardGroup>

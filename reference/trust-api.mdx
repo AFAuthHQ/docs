@@ -1,0 +1,254 @@
+---
+title: "Trust API"
+description: "Endpoints at trust.afauth.org — link flow, attestation tokens, JWKS."
+---
+
+The trust attestor exposes a small HTTP surface at `trust.afauth.org`. Agents drive a link request through `/v1/link/*`, then exchange the resulting binding token for per-service attestation JWTs at `/v1/token`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
+
+<Note>
+This page is a reference. For the step-by-step walkthroughs, see
+[Link your agent to a human](/guides/link-to-a-human) (agent side) and
+[Accept `afauth-trust` attestations](/guides/accept-afauth-trust) (service side).
+</Note>
+
+## Base URL
+
+```
+https://trust.afauth.org
+```
+
+All requests and responses are JSON (`application/json`) unless noted. All URLs are HTTPS.
+
+## Endpoints at a glance
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET`    | `/.well-known/jwks.json`   | none                       | Public verification keys. Cached 300s. |
+| `POST`   | `/v1/link/start`           | none                       | Agent → returns deep-link URL + poll URL. |
+| `POST`   | `/v1/link/poll`            | request body signature     | Agent → returns binding token once a human has confirmed. |
+| `POST`   | `/v1/token`                | `Bearer <binding_token>`   | Agent → mints a §10 attestation JWT bound to a `service_did`. |
+| `DELETE` | `/v1/bindings/{id}`        | session cookie             | Human → revokes a binding from the dashboard. |
+
+The human-facing surface (`/signin`, `/account`, `/link`) is browser UI, not a programmatic API. It is documented here only where it intersects the agent-side flow.
+
+---
+
+## `GET /.well-known/jwks.json`
+
+The public verification keys for `afauth-trust`-issued JWTs.
+
+### Response — 200 OK
+
+```json
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "k_2026-05",
+      "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    }
+  ]
+}
+```
+
+### Cache headers
+
+- `Cache-Control: public, max-age=300, s-maxage=300`
+
+Per [§10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust), new `kid`s are published at least one 900-second window before first use, so a 300-second cache TTL leaves consumers a comfortable margin to refresh.
+
+The TypeScript SDK's `JwksAttestor` (built on `jose`'s `createRemoteJWKSet`) handles refresh automatically — point it at this URL with `iss: "afauth-trust"` and `algorithms: ["EdDSA"]`.
+
+---
+
+## `POST /v1/link/start`
+
+Open a link request. The agent submits its DID and public key; the trust attestor returns a deep link the agent surfaces to a human, plus a poll URL the agent uses to retrieve the binding token after the human confirms.
+
+### Request
+
+```json
+{
+  "agent_did":         "did:key:z6Mk...",
+  "agent_pubkey_b64":  "MCowBQYDK2VwAyEA...",
+  "agent_label":       "Atlas (research agent)",
+  "callback_url":      "http://127.0.0.1:9876/done"
+}
+```
+
+| Field              | Type    | Required | Notes |
+|---|---|---|---|
+| `agent_did`        | string  | yes      | The agent's account DID. |
+| `agent_pubkey_b64` | string  | yes      | Base64-encoded Ed25519 public key. For `did:key` DIDs the payload must derive from this key. |
+| `agent_label`      | string  | no       | Human-readable label shown on the confirmation page. ≤80 chars. |
+| `callback_url`     | string  | no       | Loopback only (`127.0.0.1` or `localhost`). The deep-link page redirects here after confirmation, for desktop-style "open browser, confirm, return to CLI" flows. |
+
+### Response — 200 OK
+
+```json
+{
+  "req_id":     "lr_T1uvWxYz3456_AbCdEfGhIj",
+  "link_url":   "https://trust.afauth.org/link?req=eyJhbGciOiJIUzI1NiIs...",
+  "poll_url":   "https://trust.afauth.org/v1/link/poll",
+  "expires_in": 600
+}
+```
+
+`link_url` is the page the human visits. `req_id` is the opaque handle the agent uses when polling. Link requests expire in **10 minutes** (`expires_in`); if no human confirms by then, start over.
+
+---
+
+## `POST /v1/link/poll`
+
+Poll for the human's confirmation. The agent proves it controls the keypair it submitted by signing the `req_id`.
+
+### Request
+
+```json
+{
+  "req_id":  "lr_T1uvWxYz3456_AbCdEfGhIj",
+  "sig_b64": "<base64(Ed25519(req_id))>"
+}
+```
+
+`sig_b64` is an Ed25519 signature over the UTF-8 bytes of `req_id`, using the same keypair declared in `/v1/link/start`.
+
+### Response — 200 OK, pending
+
+```json
+{ "state": "pending" }
+```
+
+Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited at 60/minute per IP).
+
+### Response — 200 OK, confirmed
+
+```json
+{
+  "state":                    "confirmed",
+  "binding_id":               "bnd_AbCd1ef-gHIj_klmN0pqRs",
+  "binding_token":            "btk_T1uvWxYz3456_AbCdEfGhIj",
+  "binding_token_expires_at": 1772020800
+}
+```
+
+The binding token is **delivered exactly once** — store it. It is the bearer credential the agent uses to mint attestation JWTs at `/v1/token`. Binding tokens are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is a Unix timestamp.
+
+### Response — 410 Gone
+
+```json
+{ "error": { "code": "link_request_expired", "message": "Link request is expired" } }
+```
+
+Also returned if a confirmed binding token has already been retrieved (each token is poppable once).
+
+---
+
+## `POST /v1/token`
+
+Mint an attestation JWT scoped to a single service.
+
+### Request
+
+```http
+POST /v1/token HTTP/1.1
+Host: trust.afauth.org
+Authorization: Bearer btk_T1uvWxYz3456_AbCdEfGhIj
+Content-Type: application/json
+
+{ "aud": "did:web:api.example.com" }
+```
+
+| Field | Type   | Required | Notes |
+|---|---|---|---|
+| `aud` | string | yes      | The destination service's `service_did`. The JWT's `aud` will equal this value. |
+
+### Response — 200 OK
+
+```json
+{
+  "jwt":          "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6Imtf...",
+  "expires_at":   1764086400,
+  "verification": "email"
+}
+```
+
+`jwt` is a fully-formed JWT. The agent presents it on any signed AFAuth request to `did:web:api.example.com` via:
+
+```
+AFAuth-Attestation: <jwt>
+```
+
+`verification` is the strongest method the linked human has on file — emitted for the agent's awareness, identical to the `verification` claim inside the JWT.
+
+### JWT shape (per [§10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust))
+
+```
+header: { alg: "EdDSA", typ: "JWT", kid: "<from jwks.json>" }
+claims: {
+  iss: "afauth-trust",
+  aud: "<service_did>",
+  sub: "<agent_did>",
+  iat: <unix>,
+  exp: <iat + ≤900>,
+  verification: "email" | "oauth" | "payment"
+}
+```
+
+- `exp - iat` ≤ 900 seconds. Per-request only — services MUST NOT cache attestations beyond `exp`.
+- `aud` binds the token to a single service; replay against another `service_did` fails verification.
+- No PII. The trust attestor never embeds the underlying address, OAuth subject, or payment details.
+
+---
+
+## `DELETE /v1/bindings/{id}`
+
+Revoke a binding. Human-only — authenticated by the session cookie set at `trust.afauth.org/signin`. Not callable from an agent.
+
+### Response — 204 No Content
+
+After revocation, all subsequent `/v1/token` calls with the binding's token return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
+
+---
+
+## Errors
+
+Every non-2xx response uses a structured envelope:
+
+```json
+{
+  "error": {
+    "code":    "invalid_signature",
+    "message": "Agent signature over req_id did not verify"
+  }
+}
+```
+
+| Code                      | HTTP | Meaning |
+|---|---|---|
+| `invalid_request`         | 400  | Body failed schema validation. |
+| `invalid_signature`       | 400  | Agent's Ed25519 signature over `req_id` did not verify against the submitted public key. |
+| `unauthorized`            | 401  | Missing, invalid, or unknown bearer / session credential. |
+| `binding_revoked`         | 403  | Binding has been revoked by the human. |
+| `binding_expired`         | 403  | Binding has passed its `expires_at`. |
+| `verification_required`   | 403  | Human has no active verification methods (resolve at `trust.afauth.org/account`). |
+| `not_found`               | 404  | Link request or binding not found. |
+| `link_request_expired`    | 410  | Link request expired before confirmation, or binding token already retrieved. |
+| `rate_limited`            | 429  | See rate-limit table below. `Retry-After` header carries the wait in seconds. |
+| `internal_error`          | 500  | Unexpected. Retry, then report. |
+
+See [Error codes](/reference/error-codes) for the envelope contract shared with the rest of the AFAuth surface.
+
+## Rate limits
+
+Per-IP, fixed-window in Redis.
+
+| Endpoint group              | Limit |
+|---|---|
+| `POST /v1/link/start`       | 30 / minute (per IP), 20 / hour (per `agent_did`) |
+| `POST /v1/link/poll`        | 60 / minute |
+| `POST /v1/token`            | 60 / minute (per IP), 1,000 / day (per binding) |
+| All other read endpoints    | 600 / minute |
+
+The per-binding daily cap prevents a compromised binding token from acting as an unlimited attestation oracle.
