@@ -52,20 +52,53 @@ function frontmatter(
   ].join("\n");
 }
 
+// MDX parses `{...}` in prose as a JS expression, so spec prose that uses
+// literal braces (e.g. set notation like `{GET, POST}`) breaks the build.
+// Escape braces everywhere except inside fenced code blocks and inline code
+// spans, where Markdown/MDX already renders them verbatim.
+function escapeMdxBraces(md: string): string {
+  let inFence = false;
+  return md
+    .split("\n")
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+      // Split on inline code spans (odd indices) — leave those untouched.
+      return line
+        .split(/(`[^`]*`)/)
+        .map((seg, i) =>
+          i % 2 === 1
+            ? seg
+            : seg.replace(/{/g, "&#123;").replace(/}/g, "&#125;"),
+        )
+        .join("");
+    })
+    .join("\n");
+}
+
 function rewriteLinks(md: string): string {
-  // proposals/* → external GitHub link (we don't render proposals as docs pages)
+  // Spec docs live in spec/spec/, so they reference siblings via `../`.
+  // Same-dir spec docs that ARE rendered as docs pages → internal route.
   md = md.replace(
-    /\]\((proposals\/[^)]+)\)/g,
-    `](${SPEC_BLOB}/$1)`,
+    /\]\((?:\.\/)?(core|conformance)\.md([^)]*)\)/g,
+    "](/spec/$1$2)",
   );
-  // spec/foo.md → /spec/foo (internal docs link)
-  md = md.replace(/\]\(spec\/([^)]+)\.md([^)]*)\)/g, "](/spec/$1$2)");
-  // vectors/* → external GitHub link
-  md = md.replace(/\]\((vectors\/[^)]+)\)/g, `](${SPEC_BLOB}/$1)`);
-  // schemas/* → external GitHub link
-  md = md.replace(/\]\((schemas\/[^)]+)\)/g, `](${SPEC_BLOB}/$1)`);
-  // implementation/* → external GitHub link
-  md = md.replace(/\]\((implementation\/[^)]+)\)/g, `](${SPEC_BLOB}/$1)`);
+  // spec/foo.md (with or without ../) → /spec/foo internal docs link.
+  md = md.replace(/\]\((?:\.\.\/)?spec\/([^)]+)\.md([^)]*)\)/g, "](/spec/$1$2)");
+  // Sibling repo paths (with or without ../) → GitHub. Trailing-slash paths
+  // are directories (tree view); everything else is a file (blob view).
+  md = md.replace(
+    /\]\((?:\.\.\/)?(proposals|vectors|schemas|implementation|harness)(\/[^)]*)\)/g,
+    (_m: string, dir: string, rest: string) =>
+      rest.endsWith("/")
+        ? `](${SPEC_TREE}/${dir}${rest})`
+        : `](${SPEC_BLOB}/${dir}${rest})`,
+  );
+  // Other top-level repo files referenced via ../ (e.g. ../LICENSE).
+  md = md.replace(/\]\(\.\.\/([^)./][^)/]*)\)/g, `](${SPEC_BLOB}/$1)`);
   return md;
 }
 
@@ -79,6 +112,7 @@ function syncMarkdown(
   // Strip leading H1 — frontmatter already supplies the title.
   body = body.replace(/^# .+\n+/, "");
   body = rewriteLinks(body);
+  body = escapeMdxBraces(body);
   mkdirSync(OUT, { recursive: true });
   writeFileSync(
     join(OUT, dstName),
