@@ -93,11 +93,9 @@ export default {
     if (url.pathname === "/.well-known/afauth") {
       return server.handleDiscovery(req);
     }
-    if (url.pathname === "/afauth/v1/accounts" && req.method === "POST") {
-      // §6.4 explicit signup. Omit if your service only uses implicit signup.
-      return server.handleAccountCreate(req);
-    }
     if (url.pathname === "/afauth/v1/accounts/me") {
+      // Implicit signup: the first signed request from an unknown agent DID
+      // creates the account here (there is no separate create endpoint).
       return server.handleAccountIntrospection(req);
     }
     if (url.pathname === "/afauth/v1/accounts/me/owner-invitation") {
@@ -106,8 +104,9 @@ export default {
     if (url.pathname === "/afauth/v1/accounts/me/keys/rotate") {
       return server.handleKeyRotation(req);
     }
-    // /afauth/v1/claim/<token> — see the claim-page recipe for the
-    // OwnerSession bit. https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts
+    // /afauth/v1/claim/<token> — wire to server.handleClaimCompletion(req,
+    // session), building an OwnerSession from your claim page's auth layer.
+    // See the worker example: https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts
 
     return new Response("not found", { status: 404 });
   },
@@ -128,7 +127,7 @@ For deeper conformance, run the spec's Appendix C vectors against your `Verifier
 
 - Swap `Memory*` stores for durable backends. `@afauthhq/worker` ships `D1AccountStore`, `KvNonceStore`, `KvRevocationList`. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
 - Replace `consoleEmailHandler` with a real email transport.
-- Host the claim page — the SDK doesn't route it for you because it's service UI. Reference: [`examples/recipes/claim-page.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts).
+- Host the claim page — the SDK doesn't route it for you because it's service UI. Reference: [`examples/worker/src/index.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts).
 - Decide your [billing mode](/concepts/attestation). The `defineService` default is `attested_only` — set `attestation: "off"` to opt out, or `"optional"` for a migration path.
 
 ## Next steps

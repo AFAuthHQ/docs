@@ -55,11 +55,11 @@ const start = await trust.linkStart({
 //   req_id:     "lr_T1uvWxYz3456_AbCdEfGhIj",
 //   link_url:   "https://trust.afauth.org/link?req=...",
 //   poll_url:   "https://trust.afauth.org/v1/link/poll",
-//   expires_in: 600
+//   expires_in: 1800
 // }
 ```
 
-`link_url` is what the human visits. `req_id` is the opaque handle you'll use to poll. The whole request expires in **10 minutes** (`expires_in: 600`) — make sure the human can act within that window.
+`link_url` is what the human visits. `req_id` is the opaque handle you'll use to poll. The whole request expires in **30 minutes** (`expires_in: 1800`) — make sure the human can act within that window.
 
 <Tip>
 For desktop / CLI agents, set `callbackUrl` to a loopback URL — the confirmation page will redirect there after the human confirms, so your agent can detect completion without spinning the poll loop hard. Loopback only (`127.0.0.1` or `localhost`); non-loopback URLs are rejected.

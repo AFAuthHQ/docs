@@ -56,6 +56,7 @@ claims: {
   iss: "afauth-trust",
   aud: "<service_did>",
   sub: "<agent_did>",
+  sub_h: "<base64url HMAC-SHA256 pairwise human pseudonym>",
   iat: <unix>,
   exp: <iat + ≤900>,
   verification: "email" | "oauth" | "payment"
@@ -63,6 +64,7 @@ claims: {
 ```
 
 - `aud` is pinned to the destination `service_did` — a token issued for service A cannot be replayed against service B.
+- `sub_h` identifies the *human* behind the agent: stable per `(human, aud)`, unlinkable across services, carries no PII. It's the handle a service keys per-human anti-abuse state on (quotas, bans) — present whenever `verification` is set. See [§10.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#104-pairwise-human-pseudonym-sub_h).
 - `exp - iat` is capped at 900 seconds. Per-request attestations only; no caching beyond `exp`.
 - `kid` resolves to a key in [`trust.afauth.org/.well-known/jwks.json`](https://trust.afauth.org/.well-known/jwks.json). New keys are published at least one 900-second window before first use so consumer caches refresh without an outage gap.
 

@@ -1,0 +1,66 @@
+---
+title: "afauth trust"
+description: "Bind an agent to a human-controlled account at an afauth-trust attestor (AFAP-0006), and mint per-service attestation JWTs."
+---
+
+<Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
+
+`afauth trust` manages the agent's binding to a human account at an
+[afauth-trust attestor](/concepts/trust-attestor). The binding lets the agent
+mint short-lived §10 attestation JWTs so it can sign up to services that
+require attestation (`attested_only` mode). Binding state is stored at
+`~/.afauth/trust.json` (chmod 600).
+
+## `afauth trust link`
+
+Bind this agent to a human-controlled account. Opens a deep link the human
+visits in a browser; after they confirm, the binding token is fetched and
+persisted.
+
+```bash
+# Link against the default attestor (https://trust.afauth.org).
+afauth trust link
+
+# Custom attestor + a label shown on the human's confirm page.
+afauth trust link --base https://trust.example.com --label "Atlas (research agent)"
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--base` | `https://trust.afauth.org` | Trust attestor base URL. |
+| `--label` | — | Short label shown on the confirmation page. |
+| `--key` | `~/.afauth/key.json` | Agent key path. |
+| `--poll` | `3` | Seconds between poll attempts (loopback fallback). |
+| `--timeout` | `600` | Give up after N seconds. |
+| `--no-loopback` | `false` | Disable the loopback callback shortcut. |
+| `--no-browser` | `false` | Don't auto-open the browser; just print the link. |
+
+## `afauth trust token <service-did>`
+
+Mint a §10 attestation JWT for a single service, audience-bound to its DID.
+Uses the cached binding token; run `afauth trust link` first.
+
+```bash
+afauth trust token did:web:api.example.com
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--timeout` | `30` | Request timeout in seconds. |
+
+## `afauth trust status`
+
+Show the cached binding (attestor base URL, binding id, expiry).
+
+```bash
+afauth trust status
+```
+
+## `afauth trust forget`
+
+Delete the local binding. This does **not** revoke server-side — to revoke the
+binding at the attestor, visit `trust.afauth.org/account`.
+
+```bash
+afauth trust forget
+```

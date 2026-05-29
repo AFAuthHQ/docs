@@ -3,4 +3,70 @@ title: "/.well-known/afauth"
 description: "Reference page for the AFAuth discovery document — schema, fields, examples."
 ---
 
-<Note>Stub — full reference rendering of the schema with examples drawn from `vectors/discovery/`. See also: [/spec/well-known](/spec/well-known).</Note>
+Every AFAuth service publishes a JSON discovery document at `https://{host}/.well-known/afauth`. Agents fetch it to learn the service's DID, where its endpoints live, and which optional features and billing rules apply. It is unauthenticated and cacheable.
+
+<Note>
+The normative JSON Schema is [`AFAuthHQ/spec/schemas/well-known.json`](https://github.com/AFAuthHQ/spec/blob/main/schemas/well-known.json) (rendered at [/spec/well-known](/spec/well-known)). This page is the human-readable field reference; the schema is the source of truth.
+</Note>
+
+## Example
+
+```json
+{
+  "afauth_version": "0.1",
+  "service_did": "did:web:api.example.com",
+  "endpoints": {
+    "accounts":         "/afauth/v1/accounts",
+    "owner_invitation": "/afauth/v1/accounts/me/owner-invitation",
+    "claim_page":       "https://api.example.com/afauth/claim",
+    "claim_completion": "/afauth/v1/claim/complete",
+    "key_rotation":     "/afauth/v1/accounts/me/keys/rotate"
+  },
+  "signature_algorithms": ["ed25519"],
+  "features": ["attestation", "key_rotation"],
+  "recipient_types": ["email"],
+  "limits": {
+    "unclaimed_ttl_seconds": 2592000,
+    "unclaimed_rate_limit_per_hour": 100
+  },
+  "billing": {
+    "unclaimed_mode": "attested_only",
+    "accepted_attestors": ["afauth-trust"]
+  }
+}
+```
+
+## Required fields
+
+| Field                  | Type     | Notes |
+|---|---|---|
+| `afauth_version`       | string   | Protocol version this service supports, e.g. `"0.1"`. |
+| `service_did`          | string   | The service's own DID. `did:web:` is RECOMMENDED (identity anchored in DNS + TLS); `did:key:` is permitted but lacks an authority anchor. Must match `^did:(web\|key):.+`. |
+| `endpoints`            | object   | Endpoint map (below). `accounts`, `owner_invitation`, `claim_page`, `claim_completion` are all required. |
+| `signature_algorithms` | string[] | Non-empty. Each entry is `"ed25519"` or `"ecdsa-p256-sha256"`. |
+
+### `endpoints`
+
+| Key                | Required | Notes |
+|---|---|---|
+| `accounts`         | yes | Account introspection / implicit-signup endpoint. |
+| `owner_invitation` | yes | Where the agent stages an owner-invitation (step 1 of the ceremony). |
+| `claim_page`       | yes | Full URI (not a path) of the human-facing claim page. |
+| `claim_completion` | yes | Where the claim is finalized (step 2). |
+| `key_rotation`     | no  | Present only if the service supports `key_rotation`. |
+
+Endpoint values are paths relative to the service host, except `claim_page`, which is a full URI.
+
+## Optional fields
+
+| Field             | Type     | Notes |
+|---|---|---|
+| `features`        | string[] | Optional capabilities. Allowed values: `"attestation"`, `"key_rotation"`. Two-step invite is mandatory in v0.1 and is **not** advertised here. |
+| `recipient_types` | string[] | Recipient types accepted on the owner-invitation endpoint. Allowed: `"email"`, `"phone"`, `"oidc"`, `"did"`. **Absent means email-only.** |
+| `limits`          | object   | `unclaimed_ttl_seconds` (integer ≥ 0) and `unclaimed_rate_limit_per_hour` (integer ≥ 0). |
+| `billing`         | object   | Requires `unclaimed_mode` ∈ `"free"` / `"attested_only"` / `"denied"`. Optional `accepted_attestors` (string[]) names the attestor `iss` values the service trusts, e.g. `["afauth-trust"]`. |
+| `x402`            | object   | Opt-in advertisement of [x402](https://github.com/AFAuthHQ/spec/blob/main/proposals/0004-x402-binding.md) (HTTP 402) payment acceptance. Requires `facilitator`, `networks`, `assets`, `payment_endpoint`. |
+
+## Forward compatibility
+
+Unknown top-level fields MUST be accepted and ignored (§4.2) — consumers parse forward-compatibly so the document can grow without breaking older agents. Well-formed and malformed examples live in [`vectors/discovery/`](https://github.com/AFAuthHQ/spec/tree/main/vectors/discovery).

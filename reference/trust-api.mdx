@@ -54,7 +54,7 @@ The public verification keys for `afauth-trust`-issued JWTs.
 
 ### Cache headers
 
-- `Cache-Control: public, max-age=300, s-maxage=300`
+- `Cache-Control: public, max-age=300, stale-while-revalidate=900`
 
 Per [§10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust), new `kid`s are published at least one 900-second window before first use, so a 300-second cache TTL leaves consumers a comfortable margin to refresh.
 
@@ -80,7 +80,7 @@ Open a link request. The agent submits its DID and public key; the trust attesto
 | Field              | Type    | Required | Notes |
 |---|---|---|---|
 | `agent_did`        | string  | yes      | The agent's account DID. |
-| `agent_pubkey_b64` | string  | yes      | Base64-encoded Ed25519 public key. For `did:key` DIDs the payload must derive from this key. |
+| `agent_pubkey_b64` | string  | yes      | Base64url-encoded (no padding) Ed25519 public key. For `did:key` DIDs the payload must derive from this key. |
 | `agent_label`      | string  | no       | Human-readable label shown on the confirmation page. ≤80 chars. |
 | `callback_url`     | string  | no       | Loopback only (`127.0.0.1` or `localhost`). The deep-link page redirects here after confirmation, for desktop-style "open browser, confirm, return to CLI" flows. |
 
@@ -91,11 +91,11 @@ Open a link request. The agent submits its DID and public key; the trust attesto
   "req_id":     "lr_T1uvWxYz3456_AbCdEfGhIj",
   "link_url":   "https://trust.afauth.org/link?req=eyJhbGciOiJIUzI1NiIs...",
   "poll_url":   "https://trust.afauth.org/v1/link/poll",
-  "expires_in": 600
+  "expires_in": 1800
 }
 ```
 
-`link_url` is the page the human visits. `req_id` is the opaque handle the agent uses when polling. Link requests expire in **10 minutes** (`expires_in`); if no human confirms by then, start over.
+`link_url` is the page the human visits. `req_id` is the opaque handle the agent uses when polling. Link requests expire in **30 minutes** (`expires_in`); if no human confirms by then, start over.
 
 ---
 
@@ -108,19 +108,19 @@ Poll for the human's confirmation. The agent proves it controls the keypair it s
 ```json
 {
   "req_id":  "lr_T1uvWxYz3456_AbCdEfGhIj",
-  "sig_b64": "<base64(Ed25519(req_id))>"
+  "sig_b64": "<base64url(Ed25519(req_id))>"
 }
 ```
 
-`sig_b64` is an Ed25519 signature over the UTF-8 bytes of `req_id`, using the same keypair declared in `/v1/link/start`.
+`sig_b64` is the base64url (no padding) encoding of an Ed25519 signature over the UTF-8 bytes of `req_id`, using the same keypair declared in `/v1/link/start`.
 
 ### Response — 200 OK, pending
 
 ```json
-{ "state": "pending" }
+{ "state": "pending", "phase": "awaiting_signin" }
 ```
 
-Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited at 60/minute per IP).
+Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited at 60/minute per IP). `phase` is an optional hint for a tighter waiting message — `awaiting_signin` before the human has opened the link page, `awaiting_confirm` after.
 
 ### Response — 200 OK, confirmed
 
@@ -190,6 +190,7 @@ claims: {
   iss: "afauth-trust",
   aud: "<service_did>",
   sub: "<agent_did>",
+  sub_h: "<base64url HMAC-SHA256 pairwise human pseudonym>",
   iat: <unix>,
   exp: <iat + ≤900>,
   verification: "email" | "oauth" | "payment"
@@ -198,6 +199,7 @@ claims: {
 
 - `exp - iat` ≤ 900 seconds. Per-request only — services MUST NOT cache attestations beyond `exp`.
 - `aud` binds the token to a single service; replay against another `service_did` fails verification.
+- `sub_h` is a pairwise pseudonym for the human principal behind the agent — stable per `(human, aud)`, unlinkable across services. Bucket anti-abuse state (quotas, bans) on it without learning the human's identity. Present whenever `verification` is set (i.e. for any human-backed binding); see [§10.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#104-pairwise-human-pseudonym-sub_h).
 - No PII. The trust attestor never embeds the underlying address, OAuth subject, or payment details.
 
 ---
@@ -206,7 +208,11 @@ claims: {
 
 Revoke a binding. Human-only — authenticated by the session cookie set at `trust.afauth.org/signin`. Not callable from an agent.
 
-### Response — 204 No Content
+### Response — 200 OK
+
+```json
+{ "ok": true, "revoked_at": "2026-05-29T18:30:00.000Z" }
+```
 
 After revocation, all subsequent `/v1/token` calls with the binding's token return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
 
@@ -228,12 +234,12 @@ Every non-2xx response uses a structured envelope:
 | Code                      | HTTP | Meaning |
 |---|---|---|
 | `invalid_request`         | 400  | Body failed schema validation. |
-| `invalid_signature`       | 400  | Agent's Ed25519 signature over `req_id` did not verify against the submitted public key. |
+| `invalid_signature`       | 401  | Agent's Ed25519 signature over `req_id` did not verify against the submitted public key. |
 | `unauthorized`            | 401  | Missing, invalid, or unknown bearer / session credential. |
 | `binding_revoked`         | 403  | Binding has been revoked by the human. |
-| `binding_expired`         | 403  | Binding has passed its `expires_at`. |
 | `verification_required`   | 403  | Human has no active verification methods (resolve at `trust.afauth.org/account`). |
 | `not_found`               | 404  | Link request or binding not found. |
+| `binding_expired`         | 410  | Binding has passed its `expires_at`; re-link the agent. |
 | `link_request_expired`    | 410  | Link request expired before confirmation, or binding token already retrieved. |
 | `rate_limited`            | 429  | See rate-limit table below. `Retry-After` header carries the wait in seconds. |
 | `internal_error`          | 500  | Unexpected. Retry, then report. |

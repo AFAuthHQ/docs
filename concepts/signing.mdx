@@ -54,7 +54,7 @@ When the service receives this request, the [`Verifier`](https://github.com/AFAu
 
 1. Parses `Signature-Input` and confirms all required covered components and parameters are present.
 2. Reconstructs the canonical input string per RFC 9421.
-3. Resolves the public key from `keyid` (decodes `did:key`, or fetches `did:web`'s DID document).
+3. Resolves the public key from `keyid` (decodes `did:key`; the v0.1 reference `Verifier` resolves `did:key` only — `did:web` resolution is an opt-in hook the reference Worker does not ship).
 4. Verifies the Ed25519 signature against the canonical input + public key.
 5. Checks the current time is between `created` and `expires`, with ±60 seconds of skew tolerance.
 6. Checks the `nonce` hasn't been seen before for this `keyid` within the storage window.

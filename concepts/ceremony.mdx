@@ -56,6 +56,13 @@ The agent stages the recipient (step 1). The service runs whatever ceremony it c
 
 The **match relation** is the rule the service applies in step 2: case-insensitive equality for email per RFC 5321, exact `iss`+`sub` for OIDC, canonical DID equality with a signed challenge for `did`. The service MUST verify that the human's authenticated identity matches `pending_recipient` before transitioning to `CLAIMED`.
 
+<Note>
+`email` is the only recipient handler the v0.1 **reference** SDK and Worker
+ship. `phone`, `oidc`, and `did` are defined by the spec (§7.7) and present in
+the SDK's `RecipientHandler` interface, but you supply the handler — the
+reference implementation does not ship one.
+</Note>
+
 ## Why this matters
 
 Without two-step verify, an attacker who exfiltrates the agent's private key could:
@@ -92,4 +99,4 @@ Services SHOULD surface pre-claim state to the claiming human in a form they can
 
 - [Spec §7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#7-owner-invitation-and-claim) — normative ceremony rules, including the match relation per recipient type.
 - [Spec §12.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#123-claim-ceremony-strength) — assurance levels and phishing-resistant ceremonies.
-- [`examples/recipes/claim-page.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts) — reference implementation of the claim page.
+- [`examples/worker/src/index.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts) — reference wiring of the claim page and `handleClaimCompletion`.

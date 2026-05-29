@@ -107,6 +107,7 @@
               "cli/commands/discover",
               "cli/commands/call",
               "cli/commands/signup",
+              "cli/commands/trust",
               "cli/commands/invite",
               "cli/commands/accounts",
               "cli/commands/keys"

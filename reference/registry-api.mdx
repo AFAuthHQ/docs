@@ -131,6 +131,8 @@ Content-Type: application/json
 | `tags`        | string[] | yes       | ≤20 entries. |
 | Anything else | —        | no        | Unknown fields rejected with `invalid_request`. |
 
+At least one writeable field must be present — an empty body (`{}`) is rejected with `invalid_request`.
+
 To change `discovery_url`, soft-delete the existing listing and re-register from the new host.
 
 ### Response — 200 OK
@@ -186,7 +188,8 @@ Cursor-paginated list of listings.
       "status":          "active",
       "tags":            ["productivity", "storage"],
       "title":           "Example Photo Storage",
-      "description":     "AFAuth-supported photo storage for agents."
+      "description":     "AFAuth-supported photo storage for agents.",
+      "_meta":           {}
     }
   ],
   "next_cursor": "MjAyNi0wNS0yNVQxNDow..."
@@ -214,7 +217,7 @@ Same shape as a single entry in the list response above.
 
 ### Response — 404 Not Found
 
-If no listing exists for that `service_did`. Soft-deleted listings still return 200 with `status: "deleted"` (consistent with the list endpoint's `include_deleted` behaviour).
+If no listing exists for that `service_did`. Soft-deleted listings still return **200** with `status: "deleted"` — unlike the list endpoint (which hides deleted records unless `include_deleted=true`), a single fetch by DID always returns the record regardless of status.
 
 ### Cache headers
 
@@ -241,7 +244,7 @@ Every non-2xx response uses a structured envelope:
 |---|---|---|
 | `invalid_request`          | 400  | Body or query parameters failed validation. |
 | `invalid_challenge`        | 400  | Challenge token unknown, expired, or already used. |
-| `proof_fetch_failed`       | 400  | Could not reach `proof_url` over HTTPS. |
+| `proof_fetch_failed`       | 400  | Could not reach `proof_url` over HTTPS, or it did not return a `text/plain` body. |
 | `proof_mismatch`           | 400  | Challenge `discovery_url` doesn't match, or proof body doesn't equal the token. |
 | `discovery_fetch_failed`   | 400  | Could not reach the submitted `discovery_url`. |
 | `discovery_invalid`        | 400  | Discovery document failed schema validation. |
@@ -265,7 +268,7 @@ Per-IP, fixed-window. The directory returns `429 rate_limited` with a `Retry-Aft
 | `PATCH/DELETE /v1/listings/…`  | 30 / minute    |
 | `GET /v1/listings*`            | 600 / minute   |
 
-In addition, **per-host** challenge issuance is capped at 10 active challenges per hour — anyone can *request* a challenge for your host, but only you (the host's controller) can *satisfy* one.
+In addition, **per-host** challenge issuance is capped at 10 active challenges per hour — anyone can *request* a challenge for your host, but only you (the host's controller) can *satisfy* one. The SEO `GET /sitemap.xml` endpoint (outside `/v1`) is separately capped at 60 / minute per IP.
 
 ## Federation
 
