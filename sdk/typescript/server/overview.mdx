@@ -1,6 +1,26 @@
 ---
 title: "@afauthhq/server"
-description: "Service-side SDK: Verifier, Server handlers, did:web resolver, RateLimiter, Attestor, Memory stores."
+description: "Service-side SDK: defineService, Verifier, Server handlers, did:web resolver, RateLimiter, Attestor, Memory stores."
 ---
 
 <Note>Stub — overview only. Per-symbol reference is synced from typedoc output.</Note>
+
+## Entry points
+
+- **`defineService(opts)`** — opinionated convenience factory. Returns
+  a `Server` with `attestation: "required"` defaults
+  (`unclaimed_mode: "attested_only"` in the discovery doc + bundled
+  `trustAttestor()`). Use this for new integrations; opt out with
+  `attestation: "off"` (paid/read-only) or `"optional"` (migration path).
+  Synthesizes the discovery doc from `baseUrl` + `serviceDid` and
+  accepts a `discovery` override for partial customization.
+- **`new Server({...})`** — the lower-level constructor. Pass an
+  explicit `DiscoveryDocument`, attestor, nonce store, etc. Use when
+  you need `MultiAttestor`, a custom `HmacAttestor`, or full discovery
+  control.
+- **`Verifier`** — standalone §5.5/§5.6 request verifier. Use directly
+  at an edge proxy or sidecar that fronts a service backend.
+
+See [Accept AFAuth on your service](/guides/accept-afauth-on-your-service)
+for the integration walkthrough and the [attestation concept](/concepts/attestation)
+for what the defaults actually enforce.

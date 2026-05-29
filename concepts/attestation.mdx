@@ -1,24 +1,38 @@
 ---
 title: "Attestation"
-description: "An optional §10 mechanism that lets services know which runtime an agent is operating in — for abuse prevention, enterprise compliance, or rate-limit tiering."
+description: "A §10 mechanism that lets services know which runtime an agent is operating in — and gives them a per-human, per-service pseudonym to key anti-abuse state off."
 ---
 
-By default, AFAuth accepts **any** well-formed Ed25519 keypair. That's the point — the agent is self-sovereign, no central registry, no gatekeeper. But "any keypair" also means a service has no way to distinguish:
+The protocol accepts **any** well-formed Ed25519 keypair — the agent is self-sovereign, no central registry, no gatekeeper. But "any keypair" also means a service has no way to distinguish:
 
 - A legitimate, well-behaved enterprise agent from
 - A throwaway abuse-bot generated five seconds ago.
 
-When a service needs that distinction, AFAuth offers an optional **attestation** layer: the agent presents a JWT signed by a third party (a *attestor*) that vouches for the agent's runtime context.
+When a service needs that distinction, AFAuth's **attestation** layer
+has the agent present a JWT signed by a third party (an *attestor*)
+that vouches for the agent's runtime context — including, for the
+default `afauth-trust` attestor, that a verified human is on the hook
+via a per-service pseudonym `sub_h` (§10.4).
 
-## When you'd want this
+<Note>
+For new integrations, attestation is **on by default**. The
+[`defineService`](/sdk/typescript/server/overview) factory in
+`@afauthhq/server` sets `unclaimed_mode: "attested_only"` and wires
+`trustAttestor()` automatically. Pass `attestation: "off"` to opt out
+for read-only or paid-only services, or `"optional"` for a migration
+path. See [the service quickstart](/quickstart-service).
+</Note>
 
-- **Pre-claim billing.** A service that allows pre-claim signup (`unclaimed_mode = "free"`) may want stronger assurance that someone billable is behind the agent before granting paid features. Move to `unclaimed_mode = "attested_only"` and require an attestation from a commerce attestor (`stripe-projects`, `fido-agent-payments`, `mastercard-verifiable-intent`).
+## When you want attestation
+
+- **Spam resistance.** A bad actor spinning up 10,000 throwaway keypairs looks like 10,000 customers to your quota table. With attestation, all of one human's agents land in the same `sub_h` bucket — one free tier, one rate limit, one ban. This is the case the `defineService` default targets.
+- **Pre-claim billing.** A service that wants stronger assurance that someone billable is behind the agent before granting paid features can require an attestation from a commerce attestor (`stripe-projects`, `fido-agent-payments`, `mastercard-verifiable-intent`).
 - **Enterprise compliance.** A service serving B2B customers may want to limit pre-claim signup to agents running in known enterprise platforms — `microsoft-entra-agent-id`, `google-cloud-agent-identity`, `aws-iam-agent`.
-- **Rate-limit tiering.** Attested agents get higher rate limits than anonymous ones. Cheap fraud-deterrence.
+- **Rate-limit tiering.** Attested agents get higher rate limits than anonymous ones; key the buckets off `sub_h`.
 
 ## When you don't
 
-Most services don't need this. AFAuth's design accepts that pre-claim accounts are anonymous and short-lived. If your service's threat model handles that, attestation adds complexity for no benefit.
+Services that genuinely don't need a human-on-the-hook signal — read-only public APIs, paid-only services where billing is the implicit anti-abuse signal — should pass `attestation: "off"` to `defineService` (or use `new Server({...})` without an attestor). The protocol doesn't require attestation; only the convenience factory does.
 
 ## How it works
 
@@ -75,7 +89,7 @@ Platform and commerce attestors (Entra, Stripe, etc.) won't integrate with a wor
 
 A trust attestation says **one** thing: the agent DID in `sub` is bound to a human-controlled account verified by the categorical method in the `verification` claim — one of `"email"`, `"oauth"`, `"payment"`. The token carries **no PII** — the consuming service gets a signal, not an identity. Full model: [the trust attestor](/concepts/trust-attestor).
 
-`@afauthhq/server` ships a one-line `trustAttestor()` factory that pre-pins the AFAP-0006 issuer, JWKS URL, and algorithm:
+`@afauthhq/server` ships a one-line `trustAttestor()` factory that pre-pins the AFAP-0006 issuer, JWKS URL, and algorithm. For new integrations, you don't even need to call it — [`defineService`](/sdk/typescript/server/overview) wires it in automatically. If you're using `new Server({...})` directly:
 
 ```typescript
 import { trustAttestor } from "@afauthhq/server";
@@ -87,18 +101,20 @@ Then list `afauth-trust` in your discovery document's `billing.accepted_attestor
 
 ## `unclaimed_mode = "attested_only"`
 
-When a service declares this in its discovery document:
+This is the discovery-document signal that turns on enforcement. `defineService` sets it by default; if you're using `new Server({...})` directly, declare it yourself:
 
 ```json
 {
   "billing": {
     "unclaimed_mode": "attested_only",
-    "accepted_attestors": ["my-service", "stripe-projects"]
+    "accepted_attestors": ["afauth-trust", "stripe-projects"]
   }
 }
 ```
 
 …the server refuses implicit signup from any agent that doesn't present a valid `AFAuth-Attestation` header. The error response is `401 attestation_required`. The account row is **not** created on rejection — failing closed before any side effects.
+
+On the agent side, the [`afauth signup`](/cli/commands/signup) command reads this same field and auto-mints a trust attestation when present; agents that haven't run `afauth trust link` are guided to do so before retrying.
 
 Other modes (`"free"`, `"denied"`) don't enforce attestation; if an agent presents one anyway, the server still validates it (rejecting invalid tokens with `401 invalid_attestation`) but doesn't require one.
 

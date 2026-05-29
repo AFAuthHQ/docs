@@ -49,9 +49,32 @@ If you want both `afauth-trust` and another attestor (e.g., an internal HMAC or 
 
 </Step>
 
-<Step title="Configure JwksAttestor in your Server">
+<Step title="Configure the attestor in your Server">
 
-`@afauthhq/server` (`0.2.0+`) ships a `trustAttestor()` factory that bakes in the `afauth-trust` issuer, the published JWKS URL, and EdDSA — one line in your `Server` config:
+For new integrations, the easiest path is [`defineService`](/sdk/typescript/server/overview), which wires the trust attestor and the `attested_only` discovery declaration in one call:
+
+```typescript
+import {
+  defineService,
+  MemoryAccountStore,
+  MemoryNonceStore,
+  MemoryRevocationList,
+  consoleEmailHandler,
+} from "@afauthhq/server";
+
+const server = defineService({
+  baseUrl: "https://api.example.com",
+  serviceDid: "did:web:api.example.com",
+  accounts: new MemoryAccountStore(),
+  recipients: { email: consoleEmailHandler },
+  nonceStore: new MemoryNonceStore(),
+  revocationList: new MemoryRevocationList(),
+  // attestation: "required" is the default → trustAttestor() +
+  //   discovery.billing.unclaimed_mode = "attested_only".
+});
+```
+
+If you're already on `new Server({...})` or need a custom discovery doc, use the `trustAttestor()` factory directly (`@afauthhq/server` `0.2.0+` ships it pre-pinned to the AFAP-0006 issuer, JWKS URL, and EdDSA):
 
 ```typescript
 import {

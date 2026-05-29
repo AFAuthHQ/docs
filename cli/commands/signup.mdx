@@ -1,11 +1,35 @@
 ---
 title: "afauth signup"
-description: "Sign up an agent to a service. Supports implicit and explicit (terms-versioned) flows."
+description: "Sign up an agent to a service. Auto-mints a trust attestation when the service requires one."
 ---
 
 <Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
 
 ```bash
+# Implicit signup (§6.3) — signed GET /accounts/me creates the account.
 afauth signup https://api.example.com
+
+# Explicit signup (§6.4) — POST /accounts with a terms-version receipt.
 afauth signup --explicit --terms-version 2026-05-01 https://api.example.com
+
+# Override the auto-mint with an explicit attestation JWT (testing).
+afauth signup --attest "$JWT" https://api.example.com
+```
+
+## Auto-attestation
+
+When the service's discovery doc declares §9.2 `attested_only` mode
+and `--attest` is not set, `afauth signup` automatically mints a
+short-lived JWT from the cached trust binding (audience-bound to the
+service's DID) and attaches it as the `AFAuth-Attestation` header.
+
+If no binding exists, signup exits non-zero with a prompt to run
+[`afauth trust link`](/cli/commands/trust) first. If the binding has
+expired, it prompts to re-link. Services in any other mode (open or
+unset) skip the attestation step entirely.
+
+```text
+$ afauth signup https://api.example.com
+attested via trust.afauth.org
+signed up to https://api.example.com as did:key:z6Mk… (UNCLAIMED)
 ```

@@ -13,20 +13,33 @@ import InstallSdk from "/snippets/install-sdk.mdx";
 
 ## Configure a Server
 
-`Server` wraps a [`Verifier`](/concepts/signing) and adds endpoint handlers for discovery, explicit signup, account introspection, owner invitation, claim completion, and key rotation.
+`defineService` is the opinionated convenience factory. It returns a
+[`Server`](/sdk/typescript/server/overview) — the same class that wraps
+[`Verifier`](/concepts/signing) and exposes endpoint handlers for
+discovery, signup, account introspection, owner invitation, claim
+completion, and key rotation — but with two spam-resistance switches
+flipped ON by default:
+
+1. Discovery advertises `billing.unclaimed_mode: "attested_only"` (§9.2).
+2. The attestor defaults to `trustAttestor()` (AFAP-0006 §10).
+
+The net effect: un-attested implicit signups are rejected at the wire,
+and downstream anti-abuse state can key off the per-service human
+pseudonym `sub_h` (§10.4) — so one human is one bucket regardless of
+how many keypairs they spin up.
 
 ```typescript
 import {
   consoleEmailHandler,
+  defineService,
   MemoryAccountStore,
   MemoryNonceStore,
   MemoryRevocationList,
-  Server,
 } from "@afauthhq/server";
 
-const server = new Server({
-  serviceDid: "did:web:api.example.com",
+const server = defineService({
   baseUrl: "https://api.example.com",
+  serviceDid: "did:web:api.example.com",
 
   // Storage. Memory stores are for development only — swap for D1 /
   // KV / Postgres / Redis in production. See @afauthhq/worker for the
@@ -42,22 +55,33 @@ const server = new Server({
   // §7.2: redirect_url is rejected unless its host is in this list.
   redirectAllowList: ["yourapp.com"],
 
-  // Your discovery document — the JSON returned at /.well-known/afauth.
+  // attestation: "required" is the default. Override with:
+  //   "optional" — verify when present, accept un-linked agents
+  //                while you ramp (migration path)
+  //   "off"      — read-only / paid-only services where a human
+  //                signal is overkill
+});
+```
+
+The synthesized discovery doc derives endpoints from `baseUrl`
+(`/accounts`, `/owner-invitations`, `/claim`, `/claim/complete`). To
+customize paths, advertise additional `accepted_attestors`, or declare
+`limits`, pass a `discovery` override — it merges on top:
+
+```typescript
+defineService({
+  /* ... */
   discovery: {
-    afauth_version: "0.1",
-    service_did: "did:web:api.example.com",
-    endpoints: {
-      accounts: "/afauth/v1/accounts",
-      owner_invitation: "/afauth/v1/accounts/me/owner-invitation",
-      claim_page: "/claim",
-      claim_completion: "/afauth/v1/claim",
-      key_rotation: "/afauth/v1/accounts/me/keys/rotate",
-    },
-    signature_algorithms: ["ed25519"],
-    recipient_types: ["email"],
+    endpoints: { accounts: "/afauth/v1/accounts", /* ...other paths */ },
+    billing: { accepted_attestors: ["afauth-trust", "stripe-projects"] },
+    limits: { unclaimed_ttl_seconds: 3600 },
   },
 });
 ```
+
+For multi-attestor setups, custom `HmacAttestor`, or fully custom
+discovery, drop to `new Server({...})` directly — see [`@afauthhq/server`
+overview](/sdk/typescript/server/overview).
 
 ## Route incoming requests to the handlers
 
@@ -105,7 +129,7 @@ For deeper conformance, run the spec's Appendix C vectors against your `Verifier
 - Swap `Memory*` stores for durable backends. `@afauthhq/worker` ships `D1AccountStore`, `KvNonceStore`, `KvRevocationList`. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
 - Replace `consoleEmailHandler` with a real email transport.
 - Host the claim page — the SDK doesn't route it for you because it's service UI. Reference: [`examples/recipes/claim-page.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/claim-page.ts).
-- Decide your [billing mode](/concepts/attestation) — `free`, `attested_only`, or `denied` — and declare it in the discovery document.
+- Decide your [billing mode](/concepts/attestation). The `defineService` default is `attested_only` — set `attestation: "off"` to opt out, or `"optional"` for a migration path.
 
 ## Next steps
 
