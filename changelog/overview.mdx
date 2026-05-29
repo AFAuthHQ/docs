@@ -1,0 +1,42 @@
+---
+title: "Changelog"
+description: "What's new in AFAuth across the spec, SDKs, and CLI."
+---
+
+<Update label="May 29, 2026" description="Week of May 23 – May 29">
+
+## New features
+
+**SweepableAccountStore for TTL-driven account expiry**
+
+Service operators implementing the TypeScript SDK can now use a built-in helper to expire unclaimed and invited accounts that have exceeded their `unclaimed_ttl_seconds`. The new `SweepableAccountStore` interface and `sweepExpiredAccounts` helper move the `UNCLAIMED → EXPIRED` and `INVITED → EXPIRED` transitions out of bespoke service code, closing a v0.1 conformance gap for the §6.1 `EXPIRED` state. The bundled `MemoryAccountStore` and `D1AccountStore` already implement the new interface. See the [account lifecycle](/concepts/ceremony) and [revoke an account](/guides/revoke-an-account) guides.
+
+**Trust-attestation conformance vectors**
+
+The optional §10 trust-attestation surface now has a dedicated conformance corpus, documented as §C.7 in the spec. Implementations that consume trust attestations can verify themselves against the same vectors used by the reference implementations. Core §C.1–§C.6 conformance is unchanged. See the [conformance reference](/spec/conformance) and [trust attestor concept](/concepts/trust-attestor).
+
+**v0.2 implementation milestone published**
+
+The wire protocol stays at `afauth_version: 0.1`, but the reference implementations have shipped meaningful surface area beyond the original v0.1 scope. The new v0.2 implementation milestone documents what's included: the service [directory](/concepts/service-directory), the [`afauth-trust`](https://trust.afauth.org) service, the SDK trust client and `defineService` API, and CLI v0.4.0.
+
+## Updates
+
+**Worker package: D1 + Durable Object nonce stores**
+
+The `@afauthhq/worker` package's `DurableObjectNonceStore` and `createNonceDurableObject` exports are now documented. Use these to back the §4.3 replay-protection cache with a Durable Object instead of a single-region store when deploying on Cloudflare. See the [worker SDK overview](/sdk/typescript/worker/overview) and the [Cloudflare Worker deployment guide](/guides/deploy-cloudflare-worker).
+
+**`Account.createdAt` exposed via introspection**
+
+`Account` now carries a `createdAt` timestamp, surfaced by the §6.5 introspection endpoint. The response body matches the example in the spec, so introspection clients no longer need to special-case a missing field.
+
+## Bug fixes
+
+**Binary request bodies now verify correctly (`@afauthhq/server@0.1.1`, `@afauthhq/agent@0.1.1`, `@afauthhq/worker@0.1.1`)**
+
+Verification of requests with non-UTF-8 bodies — multipart uploads, ZIPs, protobuf — was failing with `401 invalid_signature` against any RFC-9421-conformant agent. Servers read bodies via `arrayBuffer()` now, and `signRequest` / `Verifier.verify` accept `Uint8Array` bodies directly. String-body callers are unaffected. Update with `npm update @afauthhq/server @afauthhq/agent @afauthhq/worker`. See [verify a request](/guides/verify-a-request).
+
+**CLI v0.4.0: correct trust binding path in `--help`**
+
+`afauth trust link --help` previously printed `~/.config/afauth/trust.json` for the binding token, but the binding is written to `~/.afauth/trust.json`. The help text now matches behaviour, and `afauth --version` on source builds reports `0.4.0` instead of the stale `0.3.1`. See the [trust command reference](/cli/commands/trust).
+
+</Update>
