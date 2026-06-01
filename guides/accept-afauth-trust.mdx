@@ -6,7 +6,7 @@ description: "Configure your service to accept short-lived JWTs from trust.afaut
 This guide turns on `afauth-trust` attestation support for an AFAuth service. After this, agents that link to a human at [trust.afauth.org](https://trust.afauth.org) can present an offline-verifiable JWT on each request, and your service can gate features on that signal — either as a softer "free tier" filter (`unclaimed_mode = "free"` with attestation-aware quotas) or as a hard requirement (`unclaimed_mode = "attested_only"`).
 
 <Note>
-Listing `afauth-trust` is one of several supported attestor configurations. See [the trust attestor concept](/concepts/trust-attestor) for what a trust attestation actually proves, and [the broader attestation concept](/concepts/attestation) for HMAC + multi-attestor patterns.
+Accepting `afauth-trust` is the **default** posture for a spam-resistant service: [`defineService`](/sdk/typescript/server/overview) already wires `trustAttestor()` and sets `unclaimed_mode = "attested_only"` for you. This guide shows what that default does and how to tune it. See [the trust attestor concept](/concepts/trust-attestor) for what a trust attestation actually proves, and [the broader attestation concept](/concepts/attestation) for HMAC + multi-attestor patterns.
 </Note>
 
 ## Before you start
@@ -156,7 +156,7 @@ afauth init                            # generate a keypair
 afauth signup https://api.example.com  # should fail with 401 attestation_required
 ```
 
-Then drive the link flow (see [Link your agent to a human](/guides/link-to-a-human)) to receive a trust attestation, and retry the signed request. The agent's request will now carry an `AFAuth-Attestation` header and your service will accept it.
+Then drive the link flow (see [Link your agent to a human](/guides/link-to-a-human)) to receive a trust attestation, and retry the signed request. The agent's request will now carry an `AFAuth-Attestation` header and your service will accept it. This is the default agent journey end to end: an agent built from the [agent quickstart](/quickstart-agent) links to a human and mints exactly the attestation your `attested_only` service requires.
 
 ## Failure modes you might hit
 
