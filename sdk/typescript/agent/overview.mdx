@@ -3,4 +3,44 @@ title: "@afauthhq/agent"
 description: "Client-side SDK: Agent.generate(), signRequest, protocol-aware builders, discovery."
 ---
 
-<Note>Stub — overview only. Per-symbol reference is synced from typedoc output.</Note>
+<Note>Per-symbol reference is synced from typedoc output. This page covers the default agent flow.</Note>
+
+## Two responsibilities
+
+- **`Agent`** — `Agent.generate()` / `Agent.fromPrivateKey()`, `signRequest`, the protocol-aware builders (owner invitation, key rotation, account introspection), and `fetchDiscovery` / `assertDiscoveryDocument`.
+- **`TrustClient`** (AFAP-0006) — binds the agent's DID to a human and mints the attestation that default services require.
+
+## Default flow: signing up to an attested_only service
+
+Services built with `defineService` default to `unclaimed_mode: "attested_only"`, so a request with no `AFAuth-Attestation` header is rejected with `401 attestation_required`. The agent links to a human once, then mints a per-service JWT per request:
+
+```typescript
+import { Agent, TrustClient, fetchDiscovery } from "@afauthhq/agent";
+
+const agent = await Agent.generate();
+const trust = new TrustClient({
+  agentDid:        agent.did,
+  agentPublicKey:  agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+});
+
+// One-time: link the agent's DID to a human.
+const { req_id, link_url } = await trust.linkStart({ label: "my agent" });
+console.log(`Have a human confirm: ${link_url}`);
+let binding;
+while (!(binding = await trust.linkPoll(req_id))) {
+  await new Promise((r) => setTimeout(r, 2_000)); // persist binding for reuse
+}
+
+// Per request: mint an audience-bound attestation and present it.
+const disc = await fetchDiscovery("https://api.example.com");
+const { jwt } = await trust.token(disc.service_did);
+
+const signed = await agent.buildAccountIntrospection({ baseUrl: "https://api.example.com" });
+await fetch(signed.url, {
+  method: signed.method,
+  headers: { ...signed.headers, "AFAuth-Attestation": jwt },
+});
+```
+
+Against a `unclaimed_mode: "free"` service the link/mint steps are unnecessary — a bare signed request suffices. Full walkthrough: [Link your agent to a human](/guides/link-to-a-human) and the [Trust API reference](/reference/trust-api).
