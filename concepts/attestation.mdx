@@ -23,6 +23,8 @@ for read-only or paid-only services, or `"optional"` for a migration
 path. See [the service quickstart](/quickstart-service).
 </Note>
 
+Attestation has **two default sides** that must line up. The service turns `attested_only` on (the `defineService` default, above). The agent links to a human once — [`afauth trust link`](/guides/link-to-a-human) — and then mints a fresh per-request attestation: [`afauth signup`](/cli/commands/signup) reads the service's `attested_only` flag and auto-mints. A default agent that has never linked can't sign up to a default service, so linking is part of the standard agent journey, not an advanced step.
+
 ## When you want attestation
 
 - **Spam resistance.** A bad actor spinning up 10,000 throwaway keypairs looks like 10,000 customers to your quota table. With attestation, all of one human's agents land in the same `sub_h` bucket — one free tier, one rate limit, one ban. This is the case the `defineService` default targets.

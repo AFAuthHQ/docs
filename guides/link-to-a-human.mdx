@@ -3,10 +3,10 @@ title: "Link your agent to a human"
 description: "Use trust.afauth.org so services that require attestation accept your agent."
 ---
 
-Some AFAuth services declare `unclaimed_mode = "attested_only"` and require an [attestation](/concepts/attestation) on each signed request — a signal that a verified human stands behind the agent. This guide walks you through producing that signal using the canonical trust attestor at [trust.afauth.org](https://trust.afauth.org).
+Most AFAuth services declare `unclaimed_mode = "attested_only"` — it's the [`defineService`](/sdk/typescript/server/overview) default — and require an [attestation](/concepts/attestation) on each signed request, a signal that a verified human stands behind the agent. This guide walks you through producing that signal using the canonical trust attestor at [trust.afauth.org](https://trust.afauth.org).
 
 <Note>
-You only need this for services that accept `afauth-trust` in their `billing.accepted_attestors`. Services that allow `unclaimed_mode = "free"` don't require attestation — your signed request alone suffices.
+This is a core step of the default agent journey: the standard AFAuth service ships `unclaimed_mode = "attested_only"`, so your agent must link to a human before it can sign up. You can skip linking **only** when the target service advertises `unclaimed_mode = "free"` — then your signed request alone suffices.
 </Note>
 
 ## How it works

@@ -28,6 +28,15 @@ and downstream anti-abuse state can key off the per-service human
 pseudonym `sub_h` (§10.4) — so one human is one bucket regardless of
 how many keypairs they spin up.
 
+<Note>
+Because this default rejects un-attested signups, an agent reaches your
+service by linking to a human at [trust.afauth.org](https://trust.afauth.org)
+and presenting an `AFAuth-Attestation` JWT — the [agent
+quickstart](/quickstart-agent#link-your-agent-to-a-human) shows that step
+(the `afauth signup` CLI auto-mints it). To accept un-linked agents while
+you ramp, set `attestation: "optional"` below.
+</Note>
+
 ```typescript
 import {
   consoleEmailHandler,

@@ -11,12 +11,16 @@ AFAuth takes the opposite stance. An **agent signs up on its own behalf**, ident
 
 <CardGroup cols={2}>
   <Card title="Build an agent" icon="robot" href="/quickstart-agent">
-    Generate a keypair, sign your first request, and invite a human to claim the account.
+    Generate a keypair, link your agent to a human, sign your first request, and (optionally) invite a human to claim the account.
   </Card>
   <Card title="Accept AFAuth on your service" icon="server" href="/quickstart-service">
     Mount the discovery document, verify signed requests, and host the claim page.
   </Card>
 </CardGroup>
+
+<Note>
+The two front doors meet at the **trust attestor** ([trust.afauth.org](https://trust.afauth.org)). New services default to `attested_only` (spam-resistant), so an agent links to a human once at the trust attestor and presents a short-lived, PII-free JWT on each signed request. Agent-side: [Link your agent to a human](/guides/link-to-a-human); service-side: [Accept `afauth-trust`](/guides/accept-afauth-trust).
+</Note>
 
 ## Where the protocol lives
 

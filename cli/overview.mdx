@@ -6,9 +6,10 @@ description: "Reference command-line agent runtime — single static binary, no 
 <Note>Stub — what the CLI is, when to reach for it instead of the SDK.</Note>
 
 ```bash
-afauth init
-afauth signup https://api.example.com
-afauth call https://api.example.com/afauth/v1/accounts/me
+afauth init                         # 1. generate the agent's did:key identity
+afauth trust link                   # 2. link to a human at trust.afauth.org (one-time)
+afauth signup https://api.example.com   # 3. sign up — auto-mints an attestation when the service requires one
+afauth call https://api.example.com/afauth/v1/accounts/me   # 4. signed requests thereafter
 ```
 
-See [Install](/cli/install) to get started.
+Most services run in `attested_only` mode, so you link to a human **once** with [`afauth trust link`](/cli/commands/trust); after that, `afauth signup` mints a short-lived attestation per service automatically. See [Install](/cli/install) to get the binary.

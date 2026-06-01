@@ -10,7 +10,11 @@ description: "Service-side SDK: defineService, Verifier, Server handlers, did:we
 - **`defineService(opts)`** — opinionated convenience factory. Returns
   a `Server` with `attestation: "required"` defaults
   (`unclaimed_mode: "attested_only"` in the discovery doc + bundled
-  `trustAttestor()`). Use this for new integrations; opt out with
+  `trustAttestor()`). With this default, an un-attested signup is
+  rejected with `401 attestation_required`; an agent reaches it by
+  linking to a human and minting a per-service JWT via
+  [`TrustClient`](/sdk/typescript/agent/overview) (or `afauth trust link`
+  + `afauth signup`). Use this for new integrations; opt out with
   `attestation: "off"` (paid/read-only) or `"optional"` (migration path).
   Synthesizes the discovery doc from `baseUrl` + `serviceDid` and
   accepts a `discovery` override for partial customization.

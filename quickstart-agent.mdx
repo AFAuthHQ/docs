@@ -1,9 +1,9 @@
 ---
 title: "Quickstart: build an agent"
-description: "Generate a keypair, fetch a service's discovery document, and make your first signed request — five minutes."
+description: "Generate a keypair, link your agent to a human, and make your first signed request that a default service accepts — five minutes."
 ---
 
-You're going to make an AI agent sign itself up to a service that supports AFAuth. The agent generates its own Ed25519 keypair, derives a `did:key` identifier from it, signs an HTTP request per [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421), and the service treats it as a first-class principal — no human in the loop.
+You're going to make an AI agent sign itself up to a service that supports AFAuth. The agent generates its own Ed25519 keypair, derives a `did:key` identifier from it, signs an HTTP request per [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421), and the service treats it as a first-class principal — with no human approving the signup.
 
 ## Install
 
@@ -40,6 +40,10 @@ A few things just happened:
 - `buildAccountIntrospection` produced a fully signed request: covered components (`@method`, `@target-uri`), signature parameters (`created`, `expires`, `nonce`, `keyid`, `alg`), and the Ed25519 signature itself. See [Signing requests](/concepts/signing).
 - The first signed request from an unrecognised DID triggers **implicit signup** on the service ([§6.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#63-implicit-signup)). The account exists immediately in `UNCLAIMED` state.
 
+<Note>
+The `UNCLAIMED` result above assumes a service in `unclaimed_mode: "free"`. Services created with `defineService` default to `attested_only` (§9.2) — including the one from the [service quickstart](/quickstart-service) — and reject an un-attested request with `401 attestation_required`, creating no account. The next step makes your agent acceptable to them.
+</Note>
+
 Persist `agent` somewhere durable — the private key is the sole credential for pre-claim operations.
 
 ```typescript
@@ -47,9 +51,49 @@ const privateKey = agent.exportPrivateKey();
 // Store privateKey securely. See concepts/identity-and-keys.
 ```
 
+## Link your agent to a human
+
+Services created with `defineService` default to `unclaimed_mode: "attested_only"` (§9.2) — the service from the [service quickstart](/quickstart-service) is one of them. They reject an un-attested signed request with `401 attestation_required` and create no account. To be accepted, the agent presents a short-lived JWT from the canonical trust attestor at [trust.afauth.org](https://trust.afauth.org) proving a verified human stands behind it — carrying no PII.
+
+You do this **once** per human/agent pair; the binding persists (90 days by default), and each per-service JWT is minted fresh.
+
+```typescript
+import { Agent, TrustClient } from "@afauthhq/agent";
+
+const trust = new TrustClient({
+  agentDid:        agent.did,
+  agentPublicKey:  agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+});
+
+// 1. Start a link request and surface the URL to a human.
+const start = await trust.linkStart({ label: "Atlas (research agent)" });
+console.log("Ask your human to confirm:", start.link_url);
+
+// 2. Poll until the human signs in at trust.afauth.org and confirms.
+let binding;
+while (!(binding = await trust.linkPoll(start.req_id))) {
+  await new Promise((r) => setTimeout(r, 2_000));
+}
+// Persist binding.binding_token securely — it is delivered ONCE.
+
+// 3. Mint a per-service attestation and attach it to the signed request.
+const { jwt } = await trust.token("did:web:api.example.com");
+const signed = await agent.buildAccountIntrospection({ baseUrl: "https://api.example.com" });
+const res = await fetch(signed.url, {
+  method: signed.method,
+  headers: { ...signed.headers, "AFAuth-Attestation": jwt },
+});
+// Now the account exists: { state: "UNCLAIMED", ... }
+```
+
+The service verifies the JWT offline against `trust.afauth.org/.well-known/jwks.json` — no enrollment, no API key. If the target service advertises `unclaimed_mode: "free"`, skip this step; the signed request alone suffices. Full walkthrough, error handling, and the `afauth trust` CLI shortcut: [Link your agent to a human](/guides/link-to-a-human).
+
 ## Invite a human to claim the account
 
 When you want a human to own the account, the agent stages an invitation. The binding only commits after the human authenticates from the invited address — see [The ceremony](/concepts/ceremony) for why.
+
+This is a **different** human binding from the trust link above. Linking proves a human stands behind the agent so an `attested_only` service accepts its requests — ownership stays with the agent. Claiming hands *ownership* to a human and is always optional. The two are independent and can happen in either order.
 
 ```typescript
 const signed = await agent.buildOwnerInvitation({
@@ -68,6 +112,8 @@ The service sends a magic link to `alice@example.com`. After Alice clicks and au
 
 ## Next steps
 
+- [Link your agent to a human](/guides/link-to-a-human) — the full trust-attestor flow, error handling, and the `afauth trust` CLI shortcut.
+- [Attestation](/concepts/attestation) and [the trust attestor](/concepts/trust-attestor) — what the `afauth-trust` JWT proves, and why default services require it.
 - [The ceremony](/concepts/ceremony) — why the agent's signature alone can't bind ownership.
 - [Identity and keys](/concepts/identity-and-keys) — `did:key` vs `did:web`, key storage, rotation.
 - [`@afauthhq/agent` overview](/sdk/typescript/agent/overview) — full API surface.

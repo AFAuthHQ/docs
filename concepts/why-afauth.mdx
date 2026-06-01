@@ -25,7 +25,14 @@ AFAuth inverts the assumption. An **agent signs up on its own behalf**, identifi
 | What identifies the account | An email + password | A `did:key` derived from an Ed25519 keypair |
 | How the agent authenticates | A bearer token issued via OAuth | An RFC 9421 signature per request |
 | How a human gets ownership | They *are* the owner from day one | They claim the account later, if/when desired |
+| How abuse is bounded | Email/CAPTCHA at signup, tied to PII | A per-human pseudonym (`sub_h`) from an [attestation](/concepts/attestation) — rate-limit and ban per human, no PII collected |
 | Cross-service portability | None — re-register everywhere | Optional — the same DID works anywhere, or per-service keys for unlinkability |
+
+## Self-sovereign without being spammable
+
+Accepting *any* Ed25519 keypair with no registry is what makes AFAuth open — and, on its own, what would make it spammable: a bad actor can mint 10,000 throwaway agents that look like 10,000 customers. AFAuth's [attestation](/concepts/attestation) layer (§10) closes that gap. A service can require each agent to present a short-lived JWT from a [trust attestor](/concepts/trust-attestor) proving a *verified human is on the hook*, keyed by a per-service pseudonym (`sub_h`) that carries **no PII**. Abuse is bounded per human — one free tier, one rate limit, one ban — instead of per keypair.
+
+This is a default, not an add-on. A service that enables `attested_only` signup is unreachable to un-attested agents, which is why the default service factory (`defineService`) ships attestation **on**, and the default agent journey [links to a human](/guides/link-to-a-human) before its first signup. Spam-resistance is a pillar of the model, not an advanced option.
 
 ## What AFAuth doesn't change
 
@@ -37,7 +44,7 @@ AFAuth is one layer of the agent-services stack. It addresses **identity** — c
 | Authorization | OAuth 2.0 `actor_token`, OIDC for AI Agents, FIDO AP2, Visa Trusted Agent | An AFAuth signature serves as the `actor_token` and as the cryptographic identity inside payment-authorization tokens |
 | **Identity** | **AFAuth** | Self-sovereign agent identity for the open web |
 
-AFAuth doesn't replace OAuth, MCP, A2A, or attestation systems. It plugs into them.
+AFAuth doesn't replace OAuth, MCP, or A2A — it plugs into them. Attestation is different: AFAuth defines its own §10 attestation hook and ships a default trust attestor (`afauth-trust`), so spam-resistance works out of the box, while still letting third-party platform and commerce attestors (Entra, Stripe, FIDO AP2) plug in alongside it.
 
 ## When NOT to use AFAuth
 

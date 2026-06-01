@@ -28,10 +28,10 @@
               "concepts/why-afauth",
               "concepts/identity-and-keys",
               "concepts/ceremony",
-              "concepts/signing",
-              "concepts/error-envelope",
               "concepts/attestation",
               "concepts/trust-attestor",
+              "concepts/signing",
+              "concepts/error-envelope",
               "concepts/service-directory"
             ]
           }
@@ -53,13 +53,13 @@
             "pages": [
               "guides/accept-afauth-on-your-service",
               "guides/verify-a-request",
+              "guides/accept-afauth-trust",
               "guides/invite-and-claim",
               "guides/rotate-keys",
               "guides/revoke-an-account",
               "guides/rate-limiting",
               "guides/deploy-cloudflare-worker",
-              "guides/list-on-the-registry",
-              "guides/accept-afauth-trust"
+              "guides/list-on-the-registry"
             ]
           }
         ]
@@ -106,8 +106,8 @@
               "cli/commands/whoami",
               "cli/commands/discover",
               "cli/commands/call",
-              "cli/commands/signup",
               "cli/commands/trust",
+              "cli/commands/signup",
               "cli/commands/invite",
               "cli/commands/accounts",
               "cli/commands/keys"

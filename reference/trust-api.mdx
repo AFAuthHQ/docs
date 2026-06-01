@@ -3,7 +3,7 @@ title: "Trust API"
 description: "Endpoints at trust.afauth.org — link flow, attestation tokens, JWKS."
 ---
 
-The trust attestor exposes a small HTTP surface at `trust.afauth.org`. Agents drive a link request through `/v1/link/*`, then exchange the resulting binding token for per-service attestation JWTs at `/v1/token`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
+The trust attestor exposes a small HTTP surface at `trust.afauth.org`. This flow is what every signup to a default (`attested_only`) service requires: agents drive a link request through `/v1/link/*` once, then exchange the resulting binding token for a per-service attestation JWT at `/v1/token` on each request, presenting it as `AFAuth-Attestation`. A service that lacks the header rejects the request with `401 attestation_required`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
 
 <Note>
 This page is a reference. For the step-by-step walkthroughs, see
@@ -179,6 +179,8 @@ Content-Type: application/json
 ```
 AFAuth-Attestation: <jwt>
 ```
+
+Against an `attested_only` service, omitting this header returns `401 attestation_required`; a malformed or wrong-audience token returns `401 invalid_attestation`. Both are distinct from the trust-attestor errors below, which `trust.afauth.org` itself returns.
 
 `verification` is the strongest method the linked human has on file — emitted for the agent's awareness, identical to the `verification` claim inside the JWT.
 
