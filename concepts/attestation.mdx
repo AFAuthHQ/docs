@@ -85,7 +85,7 @@ Pass the composite `attestor` to `Server`; the `attested_only` enforcement happe
 
 ## `afauth-trust` — the default trust attestor
 
-Platform and commerce attestors (Entra, Stripe, etc.) won't integrate with a working-draft protocol at zero adoption, which would leave `attested_only` unreachable from a clean v0.1 deployment. To close that gap, [AFAP-0006](https://github.com/AFAuthHQ/spec/blob/main/proposals/0006-afauth-trust-attestor.md) reserves `afauth-trust` as a recognized attestor identifier, operated by afauth.org at [`trust.afauth.org`](https://trust.afauth.org).
+Platform and commerce attestors (Entra, Stripe, etc.) are operated by third parties outside any single service's control, which would otherwise leave `attested_only` unreachable from a clean v0.1 deployment. To close that gap, [AFAP-0006](https://github.com/AFAuthHQ/spec/blob/main/proposals/0006-afauth-trust-attestor.md) reserves `afauth-trust` as a recognized attestor identifier, operated by afauth.org at [`trust.afauth.org`](https://trust.afauth.org).
 
 A trust attestation says **one** thing: the agent DID in `sub` is bound to a human-controlled account verified by the categorical method in the `verification` claim — one of `"email"`, `"oauth"`, `"payment"`. The token carries **no PII** — the consuming service gets a signal, not an identity. Full model: [the trust attestor](/concepts/trust-attestor).
 
