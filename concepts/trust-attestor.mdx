@@ -74,7 +74,7 @@ Full API: [Trust API reference](/reference/trust-api).
 
 The trust attestor sits between two principals:
 
-- **Humans** sign in at `trust.afauth.org`, add verification methods (email), and confirm a link request initiated by an agent. They can revoke any binding from `/account`.
+- **Humans** sign in at `trust.afauth.org`, add verification methods (email), and confirm a link request initiated by an agent. They can revoke any binding from `/account` — the **global** lever in the [revocation model](/concepts/revocation).
 - **Agents** start a link request, surface the deep link to the human, poll for confirmation, and then mint per-request audience-bound JWTs against each service.
 
 Walk through the agent side: [Link your agent to a human](/guides/link-to-a-human). Walk through the service side: [Accept `afauth-trust` attestations](/guides/accept-afauth-trust).

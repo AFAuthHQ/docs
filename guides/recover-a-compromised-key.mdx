@@ -11,7 +11,7 @@ Pre-claim (unclaimed) accounts have no owner to recover through — re-create th
 
 ## Order matters
 
-Recovery spans two layers that share no transaction — the attestor (stops new attestations) and each service (holds its own revocation list and account state). **You are the sequencer**, and two asymmetries make the order load-bearing:
+Recovery spans two layers that share no transaction — the attestor (stops new attestations) and each service (holds its own revocation list and account state); these are the **global** and **local** levers of the [revocation model](/concepts/revocation). **You are the sequencer**, and two asymmetries make the order load-bearing:
 
 - **Per-binding revoke is permanent; whole-account disable is reversible.** Re-enabling a disabled account restores minting for *every* binding you didn't separately revoke — so a careless disable-then-re-enable silently re-arms the stolen key.
 - **A re-key produces a new DID with no attestor binding.** Re-keying restores the agent at your *services*, but can't reach `attested_only` services until you re-link the new key at the attestor.

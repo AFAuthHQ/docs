@@ -1,0 +1,77 @@
+---
+title: "Revocation"
+description: "An agent is cut off by two independent levers — a global one at the attestor, a local one at each service. What each reaches, and which to pull when."
+---
+
+An agent presents **two** credentials, and they are revoked in **two** different places. Conflating them is the most common AFAuth operational mistake — so here is the mental model.
+
+- Its **`did:key` signature** authenticates every request ([signing](/concepts/signing)). A service authorizes that key locally, per account, and retires it locally — **owner-initiated revoke ([§8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#84-owner-initiated-revocation))** and **re-key ([§8.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#82-post-claim-key-rotation-re-key))**.
+- Its **attestation**, if the service requires one, proves a human is on the hook ([attestation](/concepts/attestation)). The [trust attestor](/concepts/trust-attestor) mints it; revoking the **binding** there stops new mints — **globally**, for every service at once.
+
+Neither lever subsumes the other. The global lever is one action that reaches every attested service but only the attested path; the local lever is surgical and reaches everything at one service but only that service. You use both, for different jobs.
+
+## Two levers
+
+| | **Global** — revoke the binding at the attestor | **Local** — revoke / re-key at the service (§8.4 / §8.2) |
+|---|---|---|
+| **Kills** | new attestation minting for that `agent_did` | the key as an authenticator on one account (`revoked_key`) |
+| **Scope** | every attested-session service at once | this one service |
+| **Granularity** | all-or-nothing per binding | surgical — this key, this account; others untouched |
+| **Pulled by** | whoever controls the link at the attestor | the claimed account **owner** ([§7.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim)) |
+| **Reaches** | only the **attested** path, within the freshness window | **every** path, incl. pure signature-gated; immediately |
+| **Needs** | a live attestor in the loop | nothing external — works with no attestor at all |
+
+The global lever is permanent and per-agent; the whole-account **disable** at the attestor is a reversible blanket pause over *every* binding under a human. Prefer per-binding revoke for a single stolen key — see the ordered [recovery runbook](/guides/recover-a-compromised-key).
+
+## Which lever, when
+
+| Situation | Lever |
+|---|---|
+| Decommission a compromised or rogue agent **everywhere** | **Global.** One revoke; an [attested session](/guides/keep-attested-access-live) makes it reach signature-gated services too. |
+| Offboard one agent from **one** account, keep it running elsewhere | **Local revoke** (§8.4). The global lever would kill it everywhere. |
+| Stolen key, but **keep the account** | **Local re-key** (§8.2) + re-link. The [recovery runbook](/guides/recover-a-compromised-key). |
+| Cut off access at a `free` or no-attestor service | **Local only.** There is no binding to revoke. |
+| Cut off access at a service that checked attestation **only at signup** | **Local only** — the attestor revoke never reaches it (the [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits) blind spot), unless it runs an [attested session](/guides/keep-attested-access-live). |
+| Migrate algorithm, or rotate for hygiene | **Re-key / rotate** ([pre-claim §8.1](/guides/rotate-keys)) — not an attestor action at all. |
+
+## Does an attested session make local revoke redundant?
+
+No. An [attested session](/guides/keep-attested-access-live) (§10.7) lets a single attestor-side revoke cascade to signature-gated services within the freshness window — exactly what you want for the "kill this agent everywhere" case, and it demotes the local lever from *the* everywhere-kill-switch to the surgical one. But it changes *when you reach for the global lever*, not *whether you still need the local one*. Local revoke / re-key stays the only tool when:
+
+- **The service takes no attestation.** A `free` or no-attestor service has no binding to revoke; §8.4 is the only lever. (Same for an `attested_only` service that never opted into an attested session — the §8.5 blind spot.)
+- **You want to eject one agent from one account.** The global lever is all-or-nothing per binding — it can't say "this service only," and it takes the legitimate agent down everywhere.
+- **You're recovering a stolen key without abandoning the account.** That is a re-key (§8.2); the attestor has no "swap the key on this service's account" operation. Resuming attested access afterwards needs a **re-link, not just a re-key** ([§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits)).
+- **The owner must stay sovereign.** After claim, the owner is the root of authority on the account ([§7.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim)); that control can't depend on a third-party attestor — which may be a different trust domain, or absent. Attestation is [optional](/concepts/attestation); the §8 levers are the baseline.
+
+Conversely, the local lever doesn't replace the global one either: only an attestor-side revoke takes an agent down across many services in **one** action, instead of [visiting each](/guides/revoke-an-account) (§8.5: an owner "must act at each service").
+
+## What neither lever recalls
+
+<Note>
+Revocation covers the **stop** direction. It is honest but bounded — know the edges before you rely on it.
+</Note>
+
+- **Tokens already in flight.** Revoking a binding stops *new* mints; attestations already issued stay valid until `exp` (≤ 15 min, the [§10.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#102-attestation-header) ceiling). Neither lever recalls an outstanding token — it stops the next one.
+- **The agent's local state.** After compromise the attacker controls the agent's cache and ledger. Recovery is owner- and service-side only; never depend on the agent cleaning up after itself.
+- **Other services (for the local lever).** §8.4 revocation is per-service and **non-distributed** ([§8.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#83-revocation)). There is no inter-service revocation feed — by design: distributing who-revoked-whom would leak the agent's service graph. Cross-service reach is the global lever's job.
+
+This is a property of the trust model, not a defect ([§12.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#121-key-compromise)).
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Recover a compromised key" icon="kit-medical" href="/guides/recover-a-compromised-key">
+    The ordered runbook: revoke the binding, revoke + re-key each service, re-link.
+  </Card>
+  <Card title="Revoke an account" icon="ban" href="/guides/revoke-an-account">
+    The local lever, hands-on: owner-authenticated §8.4 revoke at your service.
+  </Card>
+  <Card title="Keep attested access live" icon="arrows-rotate" href="/guides/keep-attested-access-live">
+    The attested session (§10.7) that lets a global revoke reach signature-gated services.
+  </Card>
+  <Card title="Rotate keys" icon="key" href="/guides/rotate-keys">
+    Pre-claim self-rotation (§8.1) for migration and hygiene.
+  </Card>
+</CardGroup>
+
+Spec: [§8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#84-owner-initiated-revocation), [§8.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#82-post-claim-key-rotation-re-key), [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits), [§10.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#107-attested-sessions-periodic-re-presentation).
