@@ -55,8 +55,9 @@
               "guides/verify-a-request",
               "guides/accept-afauth-trust",
               "guides/invite-and-claim",
-              "guides/rotate-keys",
               "guides/revoke-an-account",
+              "guides/recover-a-compromised-key",
+              "guides/rotate-keys",
               "guides/rate-limiting",
               "guides/deploy-cloudflare-worker",
               "guides/list-on-the-registry"
