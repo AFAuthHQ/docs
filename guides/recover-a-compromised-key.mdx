@@ -13,7 +13,7 @@ Pre-claim (unclaimed) accounts have no owner to recover through — re-create th
 
 Recovery spans two layers that share no transaction — the attestor (stops new attestations) and each service (holds its own revocation list and account state); these are the **global** and **local** levers of the [revocation model](/concepts/revocation). **You are the sequencer**, and two asymmetries make the order load-bearing:
 
-- **Per-binding revoke is permanent; whole-account disable is reversible.** Re-enabling a disabled account restores minting for *every* binding you didn't separately revoke — so a careless disable-then-re-enable silently re-arms the stolen key.
+- **Per-binding revoke is permanent; whole-account pause is reversible.** Resuming a paused account restores minting for *every* binding you didn't separately revoke — so a careless pause-then-resume silently re-arms the stolen key.
 - **A re-key produces a new DID with no attestor binding.** Re-keying restores the agent at your *services*, but can't reach `attested_only` services until you re-link the new key at the attestor.
 
 Do these in order:
@@ -22,7 +22,7 @@ Do these in order:
 2. **Revoke the key** at each service that trusts the signature directly (§8.4).
 3. **Re-key** each of those services to a fresh key (§8.2).
 4. **Re-link** the new key at the attestor.
-5. **Re-enable** the account — only if you blanket-disabled it in step 1, and only after the compromised binding is revoked.
+5. **Resume** the account — only if you blanket-paused it in step 1, and only after the compromised binding is revoked.
 
 <Steps>
 <Step title="Revoke the compromised binding at the attestor — permanent">
@@ -31,7 +31,7 @@ If your agent links to a human through [the trust attestor](/concepts/trust-atte
 Revoking stops new attestation tokens for that key immediately. Services that re-check attestation on each request — or that hold an [attested session](/guides/keep-attested-access-live) (§10.7) — lock the thief out within the token lifetime (≤ 15 min), since the agent can no longer mint a refresh. Tokens already minted stay valid until they expire — revoking stops *new* issuance, it does not recall outstanding tokens.
 
 <Warning>
-Prefer per-binding **Revoke** over **Disable account** for a single stolen key. Whole-account disable pauses *every* agent under the human and is **reversible**: re-enabling restores minting for every binding you didn't revoke. Use disable only as a temporary blanket pause when you can't tell which agent leaked — and **still revoke the compromised binding before re-enabling** (step 5).
+Prefer per-binding **Revoke** over **Pause all agents** for a single stolen key. Pausing stops *every* agent under the human and is **reversible**: resuming restores minting for every binding you didn't revoke. Use **Pause** only as a temporary blanket stop when you can't tell which agent leaked — and **still revoke the compromised binding before resuming** (step 5).
 </Warning>
 </Step>
 
@@ -65,10 +65,10 @@ afauth trust link        # run as the re-keyed agent; the human confirms as befo
 This creates a fresh binding for the new DID. Because `sub_h` is keyed on the **human**, not the key, each service sees the **same** `sub_h` as before — per-human policy and state carry forward (§10.5.1). Full flow: [Link your agent to a human](/guides/link-to-a-human).
 </Step>
 
-<Step title="Re-enable the account — only if you disabled it">
-If in step 1 you used the blanket **Disable account** (not per-binding revoke), re-enable it now at `trust.afauth.org/account` — re-enabling requires a fresh sign-in (§7.5). **Re-enable only after the compromised binding is revoked**: re-enable restores minting for every binding that isn't individually revoked.
+<Step title="Resume the account — only if you paused it">
+If in step 1 you used the blanket **Pause all agents** (not per-binding revoke), resume it now at `trust.afauth.org/account` — resuming requires a fresh sign-in (§7.5). **Resume only after the compromised binding is revoked**: resuming restores minting for every binding that isn't individually revoked.
 
-If you used per-binding **Revoke** in step 1, skip this — the account was never disabled.
+If you used per-binding **Revoke** in step 1, skip this — the account was never paused.
 </Step>
 </Steps>
 
