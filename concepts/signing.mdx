@@ -54,7 +54,7 @@ When the service receives this request, the [`Verifier`](https://github.com/AFAu
 
 1. Parses `Signature-Input` and confirms all required covered components and parameters are present.
 2. Reconstructs the canonical input string per RFC 9421.
-3. Resolves the public key from `keyid` (decodes `did:key`; the v0.1 reference `Verifier` resolves `did:key` only — `did:web` resolution is an opt-in hook the reference Worker does not ship).
+3. Resolves the public key from `keyid` by decoding the `did:key` — the identifier *is* the key, so there's no network fetch or registry lookup.
 4. Verifies the Ed25519 signature against the canonical input + public key.
 5. Checks the current time is between `created` and `expires`, with ±60 seconds of skew tolerance.
 6. Checks the `nonce` hasn't been seen before for this `keyid` within the storage window.
@@ -62,9 +62,9 @@ When the service receives this request, the [`Verifier`](https://github.com/AFAu
 
 Any step failing produces a `401 Unauthorized` with an [error envelope](/concepts/error-envelope).
 
-## Replay protection — scoped to `keyid`, not account
+## Replay protection — scoped to `keyid`
 
-The seen-nonce set is keyed by `(keyid, nonce)`, **not** `(account_did, nonce)`. This matters for `did:web` accounts that rotate their verification keys: one account identifier may present multiple keyids over its lifetime, and each keyid maintains its own nonce space. A nonce reused under a freshly-rotated key isn't a replay against the previous key's space.
+The seen-nonce set is keyed by `(keyid, nonce)`. For `did:key` the `keyid` *is* the account DID, so each agent key has its own nonce space; when an agent rotates (a new key, and therefore a new DID), the new keyid starts a fresh space — a nonce reused under the old key is not a replay against the new one.
 
 ## What this means in practice
 
