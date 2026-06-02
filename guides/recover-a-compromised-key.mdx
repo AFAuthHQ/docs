@@ -43,7 +43,7 @@ The owner binding and the agent's per-service identity (`sub_h`) carry forward. 
 
 - **The agent's local state is untrusted.** Don't rely on the agent cleaning up its own cache or ledger — the attacker controls it. Recovery is owner- and service-side only.
 - **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them. For high-value operations, gate on live per-request attestation so an attestor-side disable actually takes effect.
-- **`did:key` re-key changes the identifier.** Anything keyed on the old DID needs migrating. Operators of accounts that must survive recovery should use [`did:web`](/concepts/identity-and-keys), whose identifier is stable across re-key.
+- **`did:key` re-key changes the identifier.** Re-key returns the new DID; any service-internal state keyed on the old DID must be moved to it. Agent identities are [`did:key`](/concepts/identity-and-keys) — there is no stable-identifier agent method, so this is inherent, not a setting to avoid.
 
 ## You don't need routine rotation
 

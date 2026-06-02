@@ -1,15 +1,17 @@
 ---
 title: "Identity and keys"
-description: "AFAuth names accounts with a Decentralized Identifier. The default method, did:key, encodes the public key directly. did:web anchors the identifier in DNS instead."
+description: "AFAuth names agent accounts with a did:key Decentralized Identifier — the identifier is the public key, verifiable offline with no registry or DNS."
 ---
 
-An AFAuth account is named by a **Decentralized Identifier** ([W3C DID](https://www.w3.org/TR/did-core/)). Two methods are defined for v0.1: `did:key` (default) and `did:web` (recommended for long-lived accounts).
+An AFAuth **agent account** is named by a `did:key` **Decentralized Identifier** ([W3C DID](https://www.w3.org/TR/did-core/)) — the identifier *is* the agent's public key. This is the only agent account method in v0.1.
 
 <Note>
-The v0.1 **reference** SDK and Worker resolve `did:key` only — in-process, no
-network. `did:web` is defined by the spec and recognised in the SDK's types,
-but resolution is an opt-in hook the reference Worker does not ship ([ADR-0003](https://github.com/AFAuthHQ/spec/blob/main/implementation/adr/0003-did-key-only-resolver.md)).
-The `did:web` guidance below describes the protocol-level design.
+`did:web` is **not** an agent account method. Agents typically run on user
+machines behind home routers, with no stable web origin at which to host a
+DID document — so a DNS-anchored identity isn't usable for the common agent.
+`did:web` still appears elsewhere in AFAuth — for a **service's** own
+`service_did` (services have hosts) and for owner recipients — just never as
+the agent's key.
 </Note>
 
 ## `did:key`
@@ -26,25 +28,16 @@ Tradeoffs:
 
 - **Verifiable offline.** Anyone can verify a `did:key` signature with just the DID string and the signature itself.
 - **Cheap to generate.** `Agent.generate()` in the TypeScript SDK takes microseconds.
-- **Tightly coupled to the key.** If the agent rotates its key, the account identifier changes — external references to the old DID stop resolving. This makes `did:key` a poor fit for accounts that need to persist across rotation.
+- **The identifier changes when the key changes.** If the agent rotates its key, the account identifier changes — external references to the old DID stop resolving. Recovery from a lost or compromised key is therefore **owner-driven** (revoke + re-key), not a property of a stable identifier. See [Recover a compromised key](/guides/recover-a-compromised-key).
 
-## `did:web`
-
-A `did:web` identifier looks like a hostname:
-
-```
-did:web:agent.example.com
-```
-
-Resolution maps the DID to an HTTPS URL: `did:web:agent.example.com` → `https://agent.example.com/.well-known/did.json`. The DID document at that URL lists the agent's verification keys.
-
-Tradeoffs:
-
-- **Stable across rotation.** The identifier doesn't encode any specific key, so rotating publishes a new key in the DID document without changing the DID.
-- **Anchored in DNS + TLS.** Trust is rooted in the same machinery as the rest of the web — for services, this is usually preferred over self-issued public keys with no authority anchor.
-- **Requires a host.** You need to be able to serve `https://<host>/.well-known/did.json`, which means `did:web` is appropriate for agents that have a stable web presence.
-
-The protocol recommends `did:web` for long-lived agents. See [§3.1.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#312-didweb) for the full normative resolution rules.
+<Note>
+**Why not a stable, DNS-anchored identifier (`did:web`) for agents?** Because
+agents run on laptops and in containers behind home routers — they have no
+stable web origin to host a DID document. The `did:key`-changes-on-rotation
+tradeoff is accepted in exchange for zero-registration, offline-verifiable
+identity, and the recovery story is owner revoke + re-key rather than a stable
+DID. (`did:web` is still right for a service's own `service_did`, which does have a host.)
+</Note>
 
 ## Key handling
 
