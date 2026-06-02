@@ -30,6 +30,7 @@
               "concepts/ceremony",
               "concepts/attestation",
               "concepts/trust-attestor",
+              "concepts/revocation",
               "concepts/signing",
               "concepts/error-envelope",
               "concepts/service-directory"
