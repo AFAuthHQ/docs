@@ -1,6 +1,6 @@
 ---
 title: "@afauthhq/server"
-description: "Service-side SDK: defineService, Verifier, Server handlers (incl. owner re-key/revoke), RateLimiter, Attestor, Memory stores."
+description: "Service-side SDK: defineService, Verifier, Server handlers (incl. owner re-key/revoke + §10.7 verifyAttested), RateLimiter, Attestor, Memory stores."
 ---
 
 <Note>Stub — overview only. Per-symbol reference is synced from typedoc output.</Note>
@@ -24,6 +24,15 @@ description: "Service-side SDK: defineService, Verifier, Server handlers (incl. 
   control.
 - **`Verifier`** — standalone §5.5/§5.6 request verifier. Use directly
   at an edge proxy or sidecar that fronts a service backend.
+- **`server.verifyAttested(req)` + `attestedSession`** — the §10.7
+  attested-session gate. Configure `attestedSession: { store, mode }`
+  (with an `attestor`) and call `verifyAttested` on your own
+  authenticated endpoints: it verifies the signature, refreshes the
+  session when the agent re-presents an attestation, and challenges
+  with `401 attestation_required` when the freshness window lapses.
+  Stores: `MemoryAttestedFreshnessStore` here, `KvAttestedFreshnessStore`
+  in [`@afauthhq/worker`](/sdk/typescript/worker/overview). See
+  [Keep attested access live](/guides/keep-attested-access-live).
 
 See [Accept AFAuth on your service](/guides/accept-afauth-on-your-service)
 for the integration walkthrough and the [attestation concept](/concepts/attestation)
