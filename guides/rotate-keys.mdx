@@ -1,6 +1,28 @@
 ---
 title: "Rotate keys"
-description: "Atomic key supersession via §7.3."
+description: "Pre-claim agent key rotation (§8.1). Claimed or compromised? See Recover a compromised key."
 ---
 
-<Note>Stub — `afauth keys rotate`, server-side atomic supersession in `AccountStore`.</Note>
+Ed25519 auth keys don't need a rotation schedule — you rotate to migrate identifiers or to recover from compromise, not by the calendar. This guide covers **pre-claim** rotation, where the agent rotates its own key. For a **claimed** account, or any suspected compromise, the agent can't rotate itself — the owner recovers instead: see [Recover a compromised key](/guides/recover-a-compromised-key).
+
+## Pre-claim rotation (§8.1)
+
+While the account is `UNCLAIMED` or `INVITED`, the agent signs a rotation request with the **old** key:
+
+```ts
+const newAgent = await Agent.generate();
+const signed = await oldAgent.buildKeyRotation({ baseUrl, newDid: newAgent.did });
+// POST signed → /afauth/v1/accounts/me/keys/rotate
+```
+
+`Server.handleKeyRotation` verifies the old key's signature, moves the account to the new DID, and adds the old DID to the revocation list (§8.3). A request signed by the old key afterwards fails with `401 revoked_key`.
+
+<Note>
+**`did:key` changes the account identifier on rotation** — the identifier *is* the key, so external references to the old DID stop resolving. For accounts that must persist, use `did:web`: the identifier stays stable across rotation. See [Identity and keys](/concepts/identity-and-keys).
+</Note>
+
+## Claimed accounts can't self-rotate
+
+Post-claim, `handleKeyRotation` rejects an agent-signed rotation with `403` — changing a claimed account's key is an owner-binding operation, not something the agent's signature can authorize alone. The owner re-keys instead (§8.2). See [Recover a compromised key](/guides/recover-a-compromised-key).
+
+Spec: [§8.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#81-pre-claim-key-rotation).

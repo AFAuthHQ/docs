@@ -1,6 +1,41 @@
 ---
 title: "Revoke an account"
-description: "Tear down an account or kid from the server side."
+description: "Owner-authenticated revocation: cut off a compromised or retired agent key at your service."
 ---
 
-<Note>Stub — `Server.revoke()`, revocation list semantics.</Note>
+Revoking an account's key stops it cold at your service — the next request signed by that key fails with `401 revoked_key`. Revocation is an **owner-binding operation**: it's gated on a fresh owner-authenticated session, never the agent's signature (the whole point is that the key may be stolen). An agent cannot revoke its own claimed account — that's the [two-step-verify invariant](/concepts/ceremony).
+
+## Turnkey: `handleKeyRevocation`
+
+If you advertise the `key_revocation` endpoint, extract the owner session with your own auth layer and hand the request to the SDK:
+
+```ts
+// POST /afauth/v1/accounts/me/keys/revoke — body { account_did }
+export async function handleOwnerRevoke(req: Request, session: OwnerSession) {
+  return server.handleKeyRevocation(req, session);
+}
+```
+
+It enforces the §7.5 freshness floor, checks the session owns the account, then revokes. Response: `200 { account_did, revoked_at }`. Re-revoking is idempotent.
+
+## Bare primitive: `Server.revoke(did)`
+
+For internal or abuse-handling tooling where you already hold the DID, `Server.revoke(did)` marks the account revoked and adds the DID to the revocation list. It's **un-gated**, so you must gate it on a fresh owner session yourself:
+
+```ts
+assertFreshOwnerSession(session, { maxAgeSeconds: 120 });
+await server.revoke(did);
+```
+
+See [`examples/recipes/revoke.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/revoke.ts) for both paths.
+
+## After revoke: resume by re-keying
+
+Revoke pauses the agent. To bring it back, the owner **re-keys** — installs a fresh key on the same account from an owner session (§8.2). Walk the full incident flow in [Recover a compromised key](/guides/recover-a-compromised-key).
+
+## Coverage & limits
+
+- **Per-service.** Revocation is local to your service; there's no cross-service revocation transport (§8.3). An owner recovering from compromise acts at each service *and* at the trust attestor.
+- **In-flight attestations.** If you gate on [trust attestations](/concepts/trust-attestor), disabling the binding at the attestor stops *new* tokens — already-issued ones stay valid until they expire (≤ 15 min). Revoke at your service too for an immediate cut-off.
+
+Spec: [§8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#84-owner-initiated-revocation), [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits).

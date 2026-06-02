@@ -1,0 +1,52 @@
+---
+title: "Recover a compromised key"
+description: "Your agent's key leaked. Lock the thief out and get the agent running again, end to end."
+---
+
+Your agent's private key is compromised. This runbook locks the attacker out and restores service. It applies to **claimed** accounts — the agent can't fix this itself (its signature is exactly what's compromised), so recovery runs through the **human owner** and, if you use it, the **trust attestor**.
+
+<Note>
+Pre-claim (unclaimed) accounts have no owner to recover through — re-create the account with a fresh key. See [Rotate keys](/guides/rotate-keys).
+</Note>
+
+## Recovery is two independent layers
+
+There is no single button. Revocation doesn't propagate across services ([§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits)), so act in **both** places.
+
+<Steps>
+<Step title="Disable at the trust attestor — stops new attestations">
+If your agent links to a human through [the trust attestor](/concepts/trust-attestor), sign in at the attestor dashboard and **disable the account** (or revoke the specific binding). That immediately stops new attestation tokens for every linked agent. Services that re-check attestation on each request lock the thief out within the token lifetime (≤ 15 min).
+
+Tokens already minted stay valid until they expire — disabling stops *new* issuance, it does not recall outstanding tokens.
+</Step>
+
+<Step title="Revoke at each service that trusts the key directly">
+A service that authenticates the agent's **signature** — rather than re-checking an attestation on every request — never hears about the attestor disable. At each such service the owner revokes the key: see [Revoke an account](/guides/revoke-an-account). The old key then fails with `401 revoked_key`.
+</Step>
+
+<Step title="Re-key to resume (§8.2)">
+Revoke pauses the account. To bring the agent back **on the same account**, the owner re-keys from a fresh owner session:
+
+```ts
+// POST /afauth/v1/accounts/me/keys/rekey
+// body { current_account_did, new_account_did }
+export async function handleOwnerReKey(req: Request, session: OwnerSession) {
+  return server.handleKeyReKey(req, session);
+}
+```
+
+The owner binding and the agent's per-service identity (`sub_h`) carry forward. For `did:key` the account identifier becomes the **new** DID (returned in the response); the old DID stays revoked. The agent restarts with the new key.
+</Step>
+</Steps>
+
+## What recovery can and can't reach
+
+- **The agent's local state is untrusted.** Don't rely on the agent cleaning up its own cache or ledger — the attacker controls it. Recovery is owner- and service-side only.
+- **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them. For high-value operations, gate on live per-request attestation so an attestor-side disable actually takes effect.
+- **`did:key` re-key changes the identifier.** Anything keyed on the old DID needs migrating. Operators of accounts that must survive recovery should use [`did:web`](/concepts/identity-and-keys), whose identifier is stable across re-key.
+
+## You don't need routine rotation
+
+Ed25519 auth keys have no usage-based wear — there's no security reason to rotate on a schedule. Rotate to recover from compromise (this guide) or to migrate identifiers, not by the calendar.
+
+Spec: [§8.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#82-post-claim-key-rotation-re-key), [§8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#84-owner-initiated-revocation), [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits).

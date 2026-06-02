@@ -48,7 +48,7 @@ The protocol recommends `did:web` for long-lived agents. See [§3.1.2](https://g
 
 ## Key handling
 
-The agent's private key is the **sole credential** for pre-claim operations. There's no recovery path other than re-creating the account.
+The agent's private key is the **sole credential** for pre-claim operations: while an account is unclaimed, there's no recovery path other than re-creating it. **Once a human has claimed the account**, recovery shifts to the owner — they can revoke the key and re-key the account from an owner-authenticated session, without the agent's (possibly stolen) key. See [Recover a compromised key](/guides/recover-a-compromised-key).
 
 Storage recommendations, in increasing order of robustness:
 
@@ -63,16 +63,11 @@ The reference CLI stores the active key at `~/.afauth/key.json` with mode `0600`
 
 ## Rotation
 
-Pre-claim rotation is a one-line operation:
+Ed25519 verification keys have no usage-based wear, so there's **no need for routine, scheduled rotation**. You change a key for exactly two reasons — to migrate identifiers, or to recover from compromise — and how you do it depends on whether the account is claimed.
 
-```typescript
-const newAgent = await rotateAgentKey(oldAgent);
-// See examples/recipes/rotate.ts
-```
+**Pre-claim (agent-driven).** While the account is `UNCLAIMED`/`INVITED`, the agent rotates by signing a rotation request with the **old** key; the service decommissions the old DID (adds it to the revocation list) and accepts the new one. For `did:key` the account identifier changes — the identifier *is* the key — so external references to the old DID stop resolving. See [Rotate keys](/guides/rotate-keys).
 
-The agent signs the rotation request with the **old** key. The service revokes the old DID and accepts the new one going forward. Post-claim rotation requires owner approval — see [§8](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#8-key-management).
-
-For the runnable example: [`examples/recipes/rotate.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/rotate.ts).
+**Post-claim (owner-driven).** Once claimed, the agent's signature alone can no longer change the key — that would break the [two-step-verify invariant](/concepts/ceremony). The **owner** revokes and re-keys from a fresh owner-authenticated session. This is the compromise-recovery path: see [Recover a compromised key](/guides/recover-a-compromised-key).
 
 ## Per-service keys
 
