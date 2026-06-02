@@ -122,7 +122,13 @@ Other modes (`"free"`, `"denied"`) don't enforce attestation; if an agent presen
 
 ## Lifetime
 
-Attestations MUST be presented on a **per-request basis**. The service MUST NOT cache them beyond the JWT's `exp`. Attestations carry no state of their own — they are an additional gate on the signed request, not a session token.
+By default, attestations are presented on a **per-request basis**, and the service MUST NOT cache an attestation beyond its `exp` — it's a gate on the signed request, not a session token.
+
+Cadence is a spectrum, and most services want the middle:
+
+- **Signup-only.** Check attestation once when the account is created, then trust the agent's signature. Cheapest — but an attestor-side revoke **never reaches you**, the [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits) blind spot.
+- **Per-request.** Require a fresh attestation on every request. An attestor revoke takes effect within the token lifetime (≤ 15 min), but the attestor sits on every request's critical path.
+- **Attested session ([§10.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#107-attested-sessions-periodic-re-presentation)).** Keep a currently-valid attestation **on file** and challenge with `401 attestation_required` when it lapses; the agent re-presents a fresh one. Revocation takes effect within the freshness window, with no per-request attestor dependency. See [Keep attested access live](/guides/keep-attested-access-live).
 
 ## Security note
 
