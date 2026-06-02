@@ -28,7 +28,7 @@ Do these in order:
 <Step title="Revoke the compromised binding at the attestor — permanent">
 If your agent links to a human through [the trust attestor](/concepts/trust-attestor), sign in at the attestor dashboard, find the compromised agent under **Linked agents**, and **Revoke** it. This is per-agent and **permanent** — there is no un-revoke — so it's the durable containment for the stolen key, and it leaves your other agents running.
 
-Revoking stops new attestation tokens for that key immediately. Services that re-check attestation on each request lock the thief out within the token lifetime (≤ 15 min). Tokens already minted stay valid until they expire — revoking stops *new* issuance, it does not recall outstanding tokens.
+Revoking stops new attestation tokens for that key immediately. Services that re-check attestation on each request — or that hold an [attested session](/guides/keep-attested-access-live) (§10.7) — lock the thief out within the token lifetime (≤ 15 min), since the agent can no longer mint a refresh. Tokens already minted stay valid until they expire — revoking stops *new* issuance, it does not recall outstanding tokens.
 
 <Warning>
 Prefer per-binding **Revoke** over **Disable account** for a single stolen key. Whole-account disable pauses *every* agent under the human and is **reversible**: re-enabling restores minting for every binding you didn't revoke. Use disable only as a temporary blanket pause when you can't tell which agent leaked — and **still revoke the compromised binding before re-enabling** (step 5).
@@ -75,7 +75,7 @@ If you used per-binding **Revoke** in step 1, skip this — the account was neve
 ## What recovery can and can't reach
 
 - **The agent's local state is untrusted.** Don't rely on the agent cleaning up its own cache or ledger — the attacker controls it. Recovery is owner- and service-side only.
-- **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them (step 2). For high-value operations, gate on live per-request attestation so an attestor-side revoke actually takes effect.
+- **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them (step 2). For high-value operations, gate on live attestation — per-request, or a lighter-weight [attested session](/guides/keep-attested-access-live) (§10.7) — so an attestor-side revoke actually takes effect.
 - **`did:key` re-key changes the identifier.** Re-key returns the new DID; any service-internal state keyed on the old DID must be moved to it. Agent identities are [`did:key`](/concepts/identity-and-keys) — there is no stable-identifier agent method, so this is inherent, not a setting to avoid.
 
 ## You don't need routine rotation

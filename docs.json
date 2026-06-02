@@ -54,6 +54,7 @@
               "guides/accept-afauth-on-your-service",
               "guides/verify-a-request",
               "guides/accept-afauth-trust",
+              "guides/keep-attested-access-live",
               "guides/invite-and-claim",
               "guides/revoke-an-account",
               "guides/recover-a-compromised-key",

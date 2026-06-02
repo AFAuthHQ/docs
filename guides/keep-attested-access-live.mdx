@@ -1,0 +1,135 @@
+---
+title: "Keep attested access live"
+description: "Close the attestation blind spot without per-request cost: keep a fresh attestation on file (§10.7), so revoking once at the attestor drops access everywhere within the window."
+---
+
+An `attested_only` service that checks attestation **once at signup** and thereafter trusts the agent's signature has a blind spot ([§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits)): an attestor-side revoke or disable **never reaches it**. The stolen key keeps working until that service's own revocation list catches it.
+
+[§10.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#107-attested-sessions-periodic-re-presentation) closes that gap without paying the cost of re-checking attestation on **every** request. The service keeps a **currently-valid attestation on file** per account — an *attested session* — and challenges with `401 attestation_required` once it lapses. The agent answers by minting a fresh attestation and retrying. Revoke the binding at the attestor and the agent can no longer mint, so every attested-session service drops the account within its freshness window.
+
+It's the OAuth refresh pattern applied to attestation: the **binding token is the refresh token**, the **attestation is the short-lived access token**, and revoking the binding kills the access within the access token's lifetime.
+
+<Note>
+Opt-in, for `attested_only` services (the [`defineService`](/sdk/typescript/server/overview) default). Advertise support with the `attested_session` feature in your discovery document. Services that don't opt in keep the signup-only behaviour.
+</Note>
+
+The feature has two ends that line up: the **service** gates on freshness; the **agent** refreshes on challenge.
+
+## Service side — gate on freshness
+
+Configure `attestedSession` on your `Server` (alongside the `attestor` you already use at signup) and call `verifyAttested` on your own authenticated routes:
+
+```ts
+import {
+  Server,
+  trustAttestor,
+  MemoryAttestedFreshnessStore,
+} from "@afauthhq/server";
+
+const server = new Server({
+  // …accounts, recipients, discovery, serviceDid, nonceStore…
+  attestor: trustAttestor(),
+  attestedSession: {
+    store: new MemoryAttestedFreshnessStore(), // per-account `attestedUntil`
+    mode: "strict",                            // default — see modes below
+  },
+});
+
+// On YOUR business endpoints — NOT the AFAuth protocol endpoints,
+// which self-verify:
+app.post("/api/do-the-thing", async (req) => {
+  const { agentDid } = await server.verifyAttested(req);
+  // …fulfil the request for agentDid…
+});
+```
+
+`verifyAttested`:
+
+1. verifies the RFC 9421 signature (the per-request authenticator);
+2. if the request carries an `AFAuth-Attestation` header, verifies it (audience-pinned to your `serviceDid`) and slides the freshness window forward;
+3. throws `401 attestation_required` when no currently-valid attestation is on file.
+
+The signature is always required — the attested session is an *additional* liveness gate, never a replacement for it. For requests with a body, pass it so the content digest can be checked: `server.verifyAttested(req, bodyBytes)`.
+
+### Strict vs extended
+
+| Mode | Freshness window | Revocation latency | Relaxes §10.6? | Use when |
+|---|---|---|---|---|
+| `strict` *(default)* | the attestation's own `exp` (≤ 15 min, the [§10.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#102-attestation-header) ceiling) | ≤ the attestation TTL | No — never serves past a token's `exp` | The default. Tightest revocation. |
+| `extended` | `sessionTtlSeconds`, refreshed on each presentation | up to `sessionTtlSeconds` | Yes, for these sessions only | Strict's re-mint cadence is too costly; you accept a longer revocation latency. |
+
+```ts
+// extended: serve up to 30 min past the last presentation
+attestedSession: {
+  store: new MemoryAttestedFreshnessStore(),
+  mode: "extended",
+  sessionTtlSeconds: 1800,
+}
+```
+
+### On Cloudflare Workers
+
+The gate is **reactive** — no background timer — so the only difference is where `attestedUntil` lives. Use the KV-backed store from `@afauthhq/worker`; it sets each KV entry's TTL to the remaining window, so lapsed sessions self-evict:
+
+```ts
+import { KvAttestedFreshnessStore } from "@afauthhq/worker";
+
+attestedSession: { store: new KvAttestedFreshnessStore(env.AFAUTH_ATTESTED) }
+```
+
+## Agent side — refresh on challenge
+
+Wrap your `Agent` and `TrustClient` (both constructed with the **same** key) in an `AttestedFetcher`:
+
+```ts
+import { Agent, TrustClient, AttestedFetcher, TrustHttpError } from "@afauthhq/agent";
+
+const fetcher = new AttestedFetcher({
+  agent,                              // signs each request
+  trust,                             // mints audience-bound attestations (cached near TTL)
+  serviceDid: "did:web:api.example.com",
+});
+
+const res = await fetcher.fetch({
+  method: "POST",
+  url: "https://api.example.com/api/do-the-thing",
+  body,
+});
+```
+
+On `401 attestation_required` it mints a fresh attestation (via `trust.token()`), re-signs with a **fresh nonce**, and retries **once**. Any other status — including a `401` with a different code — is returned unchanged.
+
+- **Reactive (default).** The attestation rides only the retry, so steady-state requests carry no attestation header.
+- **Proactive (`proactive: true`).** Attach a (cached) attestation on the first attempt to skip the extra round-trip at each window boundary.
+
+A refused mint surfaces as a terminal `TrustHttpError` — don't retry it, re-link instead:
+
+```ts
+try {
+  await fetcher.fetch(req);
+} catch (e) {
+  if (e instanceof TrustHttpError && (e.isBindingRevoked() || e.isBindingExpired())) {
+    // The human revoked/expired the binding at the attestor.
+    // Re-link the agent (afauth trust link) — retrying won't help.
+  }
+}
+```
+
+The loop retries at most once, so a revoked binding fails fast instead of hammering the attestor.
+
+## Revocation latency, honestly
+
+Revoke or disable at the attestor and the agent can no longer mint. Each attested-session service then drops the account within its freshness window — **`strict`** within the attestation TTL (≤ 15 min), **`extended`** within your `sessionTtlSeconds`. That's the deliberate trade-off:
+
+- **vs per-request attestation** (instant revocation, but the attestor is on every request's critical path);
+- **vs signup-only** (no per-request cost, but never revokes — the blind spot).
+
+<Note>
+Agents re-mint roughly once per service per window. The trust attestor caps mints per binding per UTC day (`TRUST_PER_BINDING_DAILY_TOKEN_LIMIT`, default 10,000); raise it for very high service fan-out. A throttle returns `429 rate_limited` — **distinct** from a revocation.
+</Note>
+
+## Further reading
+
+- [Attestation](/concepts/attestation) — the §10 mechanism and the `afauth-trust` attestor.
+- [Recover a compromised key](/guides/recover-a-compromised-key) — how attested sessions make an attestor-side revoke reach already-signed-up services.
+- [Spec §10.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#107-attested-sessions-periodic-re-presentation) and [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits) — normative rules and revocation coverage.
