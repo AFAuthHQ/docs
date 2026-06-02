@@ -186,10 +186,12 @@ afauth trust forget     # delete the local binding; server-side revocation
 
 ## Recovery
 
-If the binding token is lost or compromised:
+**Lost or compromised binding token** — the agent keeps the same `did:key`:
 
 1. The human signs in at `trust.afauth.org/account` and revokes the binding.
 2. The agent starts a new link request (step 1 above) — the human confirms it the same way.
+
+**Compromised agent *key*** — the agent has re-keyed to a *new* `did:key` (see [Recover a compromised key](/guides/recover-a-compromised-key)): the new DID has no binding yet, so there is nothing to revoke here. Just run the link flow under the new key, from the same human account, and the new DID gets a fresh binding. The same `sub_h` carries forward because it is keyed on the human, not the key (§10.5.1).
 
 Recovery is **always agent-initiated, human-confirmed**. There is no separate "support" path that can override that — the same property that holds for AFAuth account recovery holds here.
 

@@ -1,6 +1,6 @@
 ---
 title: "Recover a compromised key"
-description: "Your agent's key leaked. Lock the thief out and get the agent running again, end to end."
+description: "Your agent's key leaked. Lock the thief out, re-key, and re-link — in the right order — to get the agent running again."
 ---
 
 Your agent's private key is compromised. This runbook locks the attacker out and restores service. It applies to **claimed** accounts — the agent can't fix this itself (its signature is exactly what's compromised), so recovery runs through the **human owner** and, if you use it, the **trust attestor**.
@@ -9,22 +9,37 @@ Your agent's private key is compromised. This runbook locks the attacker out and
 Pre-claim (unclaimed) accounts have no owner to recover through — re-create the account with a fresh key. See [Rotate keys](/guides/rotate-keys).
 </Note>
 
-## Recovery is two independent layers
+## Order matters
 
-There is no single button. Revocation doesn't propagate across services ([§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits)), so act in **both** places.
+Recovery spans two layers that share no transaction — the attestor (stops new attestations) and each service (holds its own revocation list and account state). **You are the sequencer**, and two asymmetries make the order load-bearing:
+
+- **Per-binding revoke is permanent; whole-account disable is reversible.** Re-enabling a disabled account restores minting for *every* binding you didn't separately revoke — so a careless disable-then-re-enable silently re-arms the stolen key.
+- **A re-key produces a new DID with no attestor binding.** Re-keying restores the agent at your *services*, but can't reach `attested_only` services until you re-link the new key at the attestor.
+
+Do these in order:
+
+1. **Revoke the compromised binding** at the attestor — permanent.
+2. **Revoke the key** at each service that trusts the signature directly (§8.4).
+3. **Re-key** each of those services to a fresh key (§8.2).
+4. **Re-link** the new key at the attestor.
+5. **Re-enable** the account — only if you blanket-disabled it in step 1, and only after the compromised binding is revoked.
 
 <Steps>
-<Step title="Disable at the trust attestor — stops new attestations">
-If your agent links to a human through [the trust attestor](/concepts/trust-attestor), sign in at the attestor dashboard and **disable the account** (or revoke the specific binding). That immediately stops new attestation tokens for every linked agent. Services that re-check attestation on each request lock the thief out within the token lifetime (≤ 15 min).
+<Step title="Revoke the compromised binding at the attestor — permanent">
+If your agent links to a human through [the trust attestor](/concepts/trust-attestor), sign in at the attestor dashboard, find the compromised agent under **Linked agents**, and **Revoke** it. This is per-agent and **permanent** — there is no un-revoke — so it's the durable containment for the stolen key, and it leaves your other agents running.
 
-Tokens already minted stay valid until they expire — disabling stops *new* issuance, it does not recall outstanding tokens.
+Revoking stops new attestation tokens for that key immediately. Services that re-check attestation on each request lock the thief out within the token lifetime (≤ 15 min). Tokens already minted stay valid until they expire — revoking stops *new* issuance, it does not recall outstanding tokens.
+
+<Warning>
+Prefer per-binding **Revoke** over **Disable account** for a single stolen key. Whole-account disable pauses *every* agent under the human and is **reversible**: re-enabling restores minting for every binding you didn't revoke. Use disable only as a temporary blanket pause when you can't tell which agent leaked — and **still revoke the compromised binding before re-enabling** (step 5).
+</Warning>
 </Step>
 
-<Step title="Revoke at each service that trusts the key directly">
-A service that authenticates the agent's **signature** — rather than re-checking an attestation on every request — never hears about the attestor disable. At each such service the owner revokes the key: see [Revoke an account](/guides/revoke-an-account). The old key then fails with `401 revoked_key`.
+<Step title="Revoke the key at each service that trusts it directly">
+A service that authenticates the agent's **signature** — rather than re-checking an attestation on every request — never hears about the attestor revoke. At each such service the owner revokes the key: see [Revoke an account](/guides/revoke-an-account). The old key then fails with `401 revoked_key`.
 </Step>
 
-<Step title="Re-key to resume (§8.2)">
+<Step title="Re-key each service to resume (§8.2)">
 Revoke pauses the account. To bring the agent back **on the same account**, the owner re-keys from a fresh owner session:
 
 ```ts
@@ -35,14 +50,32 @@ export async function handleOwnerReKey(req: Request, session: OwnerSession) {
 }
 ```
 
-The owner binding and the agent's per-service identity (`sub_h`) carry forward. For `did:key` the account identifier becomes the **new** DID (returned in the response); the old DID stays revoked. The agent restarts with the new key.
+The owner binding carries forward. For `did:key` the account identifier becomes the **new** DID (returned in the response); the old DID stays revoked. The agent restarts with the new key.
+</Step>
+
+<Step title="Re-link the new key at the attestor">
+A re-key gives the agent a **new** `did:key`, and the attestor binding was keyed to the *old* DID — so nothing carries over automatically. Until you re-link, the new key has no attestation and **cannot reach `attested_only` services** (the SDK default).
+
+Re-run the link flow under the new key, from the same human account:
+
+```bash
+afauth trust link        # run as the re-keyed agent; the human confirms as before
+```
+
+This creates a fresh binding for the new DID. Because `sub_h` is keyed on the **human**, not the key, each service sees the **same** `sub_h` as before — per-human policy and state carry forward (§10.5.1). Full flow: [Link your agent to a human](/guides/link-to-a-human).
+</Step>
+
+<Step title="Re-enable the account — only if you disabled it">
+If in step 1 you used the blanket **Disable account** (not per-binding revoke), re-enable it now at `trust.afauth.org/account` — re-enabling requires a fresh sign-in (§7.5). **Re-enable only after the compromised binding is revoked**: re-enable restores minting for every binding that isn't individually revoked.
+
+If you used per-binding **Revoke** in step 1, skip this — the account was never disabled.
 </Step>
 </Steps>
 
 ## What recovery can and can't reach
 
 - **The agent's local state is untrusted.** Don't rely on the agent cleaning up its own cache or ledger — the attacker controls it. Recovery is owner- and service-side only.
-- **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them. For high-value operations, gate on live per-request attestation so an attestor-side disable actually takes effect.
+- **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them (step 2). For high-value operations, gate on live per-request attestation so an attestor-side revoke actually takes effect.
 - **`did:key` re-key changes the identifier.** Re-key returns the new DID; any service-internal state keyed on the old DID must be moved to it. Agent identities are [`did:key`](/concepts/identity-and-keys) — there is no stable-identifier agent method, so this is inherent, not a setting to avoid.
 
 ## You don't need routine rotation
