@@ -36,6 +36,6 @@ Revoke pauses the agent. To bring it back, the owner **re-keys** — installs a 
 ## Coverage & limits
 
 - **Per-service.** Revocation is local to your service; there's no cross-service revocation transport (§8.3). An owner recovering from compromise acts at each service *and* at the trust attestor.
-- **In-flight attestations.** If you gate on [trust attestations](/concepts/trust-attestor), disabling the binding at the attestor stops *new* tokens — already-issued ones stay valid until they expire (≤ 15 min). Revoke at your service too for an immediate cut-off.
+- **In-flight attestations.** If you gate on [trust attestations](/concepts/trust-attestor), revoking the binding at the attestor stops *new* tokens — already-issued ones stay valid until they expire (≤ 15 min). Revoke at your service too for an immediate cut-off. Recovering a stolen key end to end? Follow the ordered runbook in [Recover a compromised key](/guides/recover-a-compromised-key).
 
 Spec: [§8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#84-owner-initiated-revocation), [§8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#85-revocation-coverage-and-its-limits).
