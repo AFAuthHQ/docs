@@ -21,4 +21,11 @@ afauth call --header 'X-Trace: abc' --header 'X-Tenant: foo' \
 
 # Include response headers in output
 afauth call --show-headers https://api.example.com/afauth/v1/accounts/me
+
+# Attach an attestation proactively (otherwise auto-minted on a §10.7 challenge)
+afauth call --attest "$(afauth trust token did:web:api.example.com)" https://api.example.com/x
 ```
+
+<Note>
+Against an `attested_only` service, `afauth call` runs the §10.7 refresh-on-challenge loop: on `401 attestation_required` it mints a fresh attestation from your trust binding and retries once. A revoked or expired binding surfaces with re-link guidance rather than looping. `--attest` attaches one up front. See [Keep attested access live](/guides/keep-attested-access-live).
+</Note>

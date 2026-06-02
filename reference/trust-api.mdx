@@ -199,7 +199,7 @@ claims: {
 }
 ```
 
-- `exp - iat` ≤ 900 seconds. Per-request only — services MUST NOT cache attestations beyond `exp`.
+- `exp - iat` ≤ 900 seconds. A service MUST NOT cache a single attestation beyond its `exp`; to avoid presenting one on every request it MAY instead keep an [attested session](/guides/keep-attested-access-live) live by periodic re-presentation (§10.7).
 - `aud` binds the token to a single service; replay against another `service_did` fails verification.
 - `sub_h` is a pairwise pseudonym for the human principal behind the agent — stable per `(human, aud)`, unlinkable across services. Bucket anti-abuse state (quotas, bans) on it without learning the human's identity. Present whenever `verification` is set (i.e. for any human-backed binding); see [§10.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#104-pairwise-human-pseudonym-sub_h).
 - No PII. The trust attestor never embeds the underlying address, OAuth subject, or payment details.
@@ -256,7 +256,7 @@ Per-IP, fixed-window in Redis.
 |---|---|
 | `POST /v1/link/start`       | 30 / minute (per IP), 20 / hour (per `agent_did`) |
 | `POST /v1/link/poll`        | 60 / minute |
-| `POST /v1/token`            | 60 / minute (per IP), 1,000 / day (per binding) |
+| `POST /v1/token`            | 60 / minute (per IP), 10,000 / day (per binding, configurable) |
 | All other read endpoints    | 600 / minute |
 
-The per-binding daily cap prevents a compromised binding token from acting as an unlimited attestation oracle.
+The per-binding daily cap (`TRUST_PER_BINDING_DAILY_TOKEN_LIMIT`, default 10,000) prevents a compromised binding token from acting as an unlimited attestation oracle, while leaving headroom for the §10.7 re-mint cadence of an agent active across many services.

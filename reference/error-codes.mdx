@@ -18,7 +18,7 @@ Every reserved code, its HTTP status, the spec section that triggers it, and a o
 | `replayed_nonce` | `401` | `(keyid, nonce)` has been seen before within the freshness window | §5.6 | Stop — your signer is reusing nonces (bug) |
 | `revoked_key` | `401` | Account DID is on the service's revocation list | §8.3 | Onboard a fresh agent — the old key is gone |
 | `invalid_attestation` | `401` | Attestation JWT signature/claim violation, or `iss` not accepted by service | §10 | Re-mint with a valid attestor |
-| `attestation_required` | `401` | Service declares `unclaimed_mode = attested_only` and request lacks/has invalid attestation | §6.3, §9.2 | Mint an attestation from an accepted attestor |
+| `attestation_required` | `401` | Attestation required but missing/invalid — at signup (`attested_only`), or when an attested session's freshness window lapses (§10.7) | §6.3, §9.2, §10.7 | Mint a fresh attestation from an accepted attestor and retry |
 | `malformed_request` | `400` | Invalid JSON, missing required fields, invalid DID syntax | §11.2 | Fix the request shape |
 | `unsupported_recipient_type` | `400` | Invitation `recipient.type` isn't in the service's declared `recipient_types` | §7.2, §7.7 | Use a type from the discovery doc |
 | `unknown_account` | `404` | Account does not exist, and implicit signup is disabled | §6.4 | Use `POST /accounts` to explicitly sign up |

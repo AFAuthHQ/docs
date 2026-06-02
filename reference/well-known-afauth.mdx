@@ -23,7 +23,7 @@ The normative JSON Schema is [`AFAuthHQ/spec/schemas/well-known.json`](https://g
     "key_rotation":     "/afauth/v1/accounts/me/keys/rotate"
   },
   "signature_algorithms": ["ed25519"],
-  "features": ["attestation", "key_rotation"],
+  "features": ["attestation", "key_rotation", "attested_session"],
   "recipient_types": ["email"],
   "limits": {
     "unclaimed_ttl_seconds": 2592000,
@@ -61,7 +61,7 @@ Endpoint values are paths relative to the service host, except `claim_page`, whi
 
 | Field             | Type     | Notes |
 |---|---|---|
-| `features`        | string[] | Optional capabilities. Allowed values: `"attestation"`, `"key_rotation"`. Two-step invite is mandatory in v0.1 and is **not** advertised here. |
+| `features`        | string[] | Optional capabilities. Allowed values: `"attestation"`, `"key_rotation"`, `"attested_session"` (the service maintains §10.7 attested sessions — periodic re-presentation). Two-step invite is mandatory in v0.1 and is **not** advertised here. |
 | `recipient_types` | string[] | Recipient types accepted on the owner-invitation endpoint. Allowed: `"email"`, `"phone"`, `"oidc"`, `"did"`. **Absent means email-only.** |
 | `limits`          | object   | `unclaimed_ttl_seconds` (integer ≥ 0) and `unclaimed_rate_limit_per_hour` (integer ≥ 0). |
 | `billing`         | object   | Requires `unclaimed_mode` ∈ `"free"` / `"attested_only"` / `"denied"`. Optional `accepted_attestors` (string[]) names the attestor `iss` values the service trusts, e.g. `["afauth-trust"]`. |

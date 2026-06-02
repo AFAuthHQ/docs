@@ -1,6 +1,6 @@
 ---
 title: "@afauthhq/agent"
-description: "Client-side SDK: Agent.generate(), signRequest, protocol-aware builders, discovery."
+description: "Client-side SDK: Agent.generate(), signRequest, protocol-aware builders, discovery, AttestedFetcher (§10.7)."
 ---
 
 <Note>Per-symbol reference is synced from typedoc output. This page covers the default agent flow.</Note>
@@ -44,3 +44,16 @@ await fetch(signed.url, {
 ```
 
 Against a `unclaimed_mode: "free"` service the link/mint steps are unnecessary — a bare signed request suffices. Full walkthrough: [Link your agent to a human](/guides/link-to-a-human) and the [Trust API reference](/reference/trust-api).
+
+## Keeping access live (§10.7)
+
+For ongoing requests to an attested-session service, `AttestedFetcher` runs the refresh-on-challenge loop for you — it signs each request and, on `401 attestation_required`, mints a fresh attestation (via `TrustClient`) and retries once:
+
+```typescript
+import { Agent, TrustClient, AttestedFetcher } from "@afauthhq/agent";
+
+const fetcher = new AttestedFetcher({ agent, trust, serviceDid: disc.service_did });
+const res = await fetcher.fetch({ method: "GET", url: "https://api.example.com/api/resource" });
+```
+
+A revoked/expired binding surfaces as a terminal `TrustHttpError` (re-link, don't retry). See [Keep attested access live](/guides/keep-attested-access-live).
