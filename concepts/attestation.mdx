@@ -27,7 +27,7 @@ Attestation has **two default sides** that must line up. The service turns `atte
 
 ## When you want attestation
 
-- **Spam resistance.** A bad actor spinning up 10,000 throwaway keypairs looks like 10,000 customers to your quota table. With attestation, all of one human's agents land in the same `sub_h` bucket — one free tier, one rate limit, one ban. This is the case the `defineService` default targets.
+- **Spam resistance.** A bad actor spinning up 10,000 throwaway keypairs looks like 10,000 customers to your quota table. With attestation, all of one human's agents carry the same `sub_h` — so `defineService` rejects the *second* free account for a human it already knows with `409 principal_already_registered` (§10.4.4): same human, same bucket, **enforced by default**, not left to your quota code. Run agent fleets instead (many agents, one human)? Pass `subHUniqueness: false` and key your own per-human rate limits and bans off `sub_h`.
 - **Pre-claim billing.** A service that wants stronger assurance that someone billable is behind the agent before granting paid features can require an attestation from a commerce attestor (`stripe-projects`, `fido-agent-payments`, `mastercard-verifiable-intent`).
 - **Enterprise compliance.** A service serving B2B customers may want to limit pre-claim signup to agents running in known enterprise platforms — `microsoft-entra-agent-id`, `google-cloud-agent-identity`, `aws-iam-agent`.
 - **Rate-limit tiering.** Attested agents get higher rate limits than anonymous ones; key the buckets off `sub_h`.

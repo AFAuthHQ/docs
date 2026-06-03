@@ -17,7 +17,12 @@ description: "Service-side SDK: defineService, Verifier, Server handlers (incl. 
   + `afauth signup`). Use this for new integrations; opt out with
   `attestation: "off"` (paid/read-only) or `"optional"` (migration path).
   Synthesizes the discovery doc from `baseUrl` + `serviceDid` and
-  accepts a `discovery` override for partial customization.
+  accepts a `discovery` override for partial customization. In `required`
+  mode it also enforces **per-principal uniqueness** (§10.4.4): a second
+  account for a human who already has one is rejected with
+  `409 principal_already_registered` ("same human, same bucket"). Pass
+  `subHUniqueness: false` to allow agent fleets, or a durable
+  `D1SubHUniquenessStore` for production.
 - **`new Server({...})`** — the lower-level constructor. Pass an
   explicit `DiscoveryDocument`, attestor, nonce store, etc. Use when
   you need `MultiAttestor`, a custom `HmacAttestor`, or full discovery
@@ -33,6 +38,16 @@ description: "Service-side SDK: defineService, Verifier, Server handlers (incl. 
   Stores: `MemoryAttestedFreshnessStore` here, `KvAttestedFreshnessStore`
   in [`@afauthhq/worker`](/sdk/typescript/worker/overview). See
   [Keep attested access live](/guides/keep-attested-access-live).
+- **`subHUniqueness` + `SubHUniquenessStore`** — the §10.4.4 per-principal
+  uniqueness gate ("same human, same bucket"). A signup whose verified
+  `(iss, sub_h)` already holds an account is rejected with
+  `409 principal_already_registered`. `defineService` defaults a
+  process-local `MemorySubHUniquenessStore` in `required` mode; supply a
+  durable, atomic `D1SubHUniquenessStore`
+  ([`@afauthhq/worker`](/sdk/typescript/worker/overview)) in production, or
+  `subHUniqueness: false` to run agent fleets. The slot follows key
+  rotations (§8.1/§8.2) and is released on account expiry — pass
+  `server.subHUniquenessStore` to `sweepExpiredAccounts`.
 
 See [Accept AFAuth on your service](/guides/accept-afauth-on-your-service)
 for the integration walkthrough and the [attestation concept](/concepts/attestation)

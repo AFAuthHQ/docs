@@ -3,6 +3,16 @@ title: "Changelog"
 description: "What's new in AFAuth across the spec, SDKs, and CLI."
 ---
 
+<Update label="June 3, 2026" description="Week of May 30 – June 5">
+
+## New features
+
+**Per-principal uniqueness — "same human, same bucket" by default**
+
+`attested_only` (§9.2) only proves a signup carries *some* valid attestation; on its own it does not stop one human from minting many agent keypairs and burning many free tiers. Because every trust attestation for the same human at the same service carries the same pairwise pseudonym `sub_h` (§10.4), the SDK now keys a uniqueness slot on `(iss, sub_h)`. `defineService` enforces it ON by default in `required` mode: a second account for a human who already has one is rejected with `409 principal_already_registered` (a new reserved code, §10.4.4 / §11.3). The new `SubHUniquenessStore` interface ships with `MemorySubHUniquenessStore` (`@afauthhq/server`) and an atomic, durable `D1SubHUniquenessStore` (`@afauthhq/worker`, migration `0002_subh_uniqueness.sql`). The slot follows key rotations (§8.1/§8.2) and is released on account expiry via `sweepExpiredAccounts`. Opt out with `subHUniqueness: false` (fleet operators: many agents, one human). See the [attestation concept](/concepts/attestation) and [service SDK overview](/sdk/typescript/server/overview).
+
+</Update>
+
 <Update label="May 29, 2026" description="Week of May 23 – May 29">
 
 ## New features

@@ -27,6 +27,7 @@ Every reserved code, its HTTP status, the spec section that triggers it, and a o
 | `account_expired` | `410` | Account exceeded `unclaimed_ttl_seconds` without being claimed | §6.1 | Onboard a fresh agent |
 | `already_claimed` | `409` | Operation requires `UNCLAIMED` / `INVITED` state but account is already `CLAIMED` | §11.2 | Stop — claim has already happened |
 | `not_claimed` | `409` | Operation requires `CLAIMED` state but account isn't claimed yet | §11.2 | Send an owner invitation first |
+| `principal_already_registered` | `409` | A service enforcing per-principal uniqueness (§10.4.4) received an attested signup whose `(iss, sub_h)` already holds an account ("same human, same bucket") | §10.4.4 | Stop — this human already has an account here; use the existing one |
 | `owner_authentication_required` | `403` | Operation requires an owner-authenticated session; none was supplied (or supplied identity doesn't match the match relation) | §7.4 | Prompt the human to authenticate at the claim page |
 | `owner_session_too_stale` | `403` | Owner session present but `authenticatedAt` is missing or older than the §7.5 freshness window (60-300s) | §7.5 | Prompt the human to re-authenticate, then retry |
 | `owner_binding_blocked` | `403` | An agent-signed request attempted an owner-binding operation post-claim | §7.5 | Stop — this operation requires the owner |
@@ -57,6 +58,7 @@ Every reserved code, its HTTP status, the spec section that triggers it, and a o
 ### State machine boundary
 
 - `already_claimed` / `not_claimed` — read the spec state machine; the operation doesn't apply.
+- `principal_already_registered` — this human already has an account here; "one account per human" (§10.4.4). Use the existing one (don't spin up another agent).
 - `owner_authentication_required` — needs the human in the loop.
 - `owner_binding_blocked` — needs the human in the loop, full stop.
 
