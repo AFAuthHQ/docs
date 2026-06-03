@@ -15,9 +15,9 @@ The agent never authenticates the human — the trust attestor does. The flow is
 
 1. **Agent → Trust:** open a link request, get a deep-link URL and a poll URL.
 2. **Human → Trust (browser):** sign in at `trust.afauth.org`, confirm the request.
-3. **Agent ↔ Trust:** poll until confirmed, receive a long-lived **binding token**, and mint short-lived per-service JWTs as needed.
+3. **Agent ↔ Trust:** poll until confirmed, then mint short-lived per-service JWTs as needed — each signed with the agent key, no bearer token.
 
-You do this **once** per human/agent pair — the binding token persists (90 days by default). Each per-service JWT is fresh, audience-bound, and ≤ 900 s lived.
+You do this **once** per human/agent pair — the binding persists (90 days by default). Each per-service JWT is fresh, audience-bound, and ≤ 900 s lived.
 
 ## Before you start
 
@@ -79,7 +79,7 @@ The human lands on `trust.afauth.org/link`, signs in if needed (email magic-link
 
 </Step>
 
-<Step title="Poll for confirmation, get a binding token">
+<Step title="Poll for confirmation">
 
 `linkPoll` returns the binding on confirmation, `undefined` while pending, and throws on error:
 
@@ -89,11 +89,12 @@ while (!(binding = await trust.linkPoll(start.req_id))) {
   await new Promise((r) => setTimeout(r, 2_000));
 }
 
-// Store these somewhere durable. The token is delivered ONCE.
-saveBindingToken(binding.binding_token, binding.binding_token_expires_at);
+// `binding` is just { binding_id, binding_token_expires_at } — there is no
+// secret here. The agent's keypair is the only credential; each mint is
+// signed with it. Persist the keypair securely (encrypted at rest).
 ```
 
-The binding token is the agent's secret credential at the trust attestor — treat it like an API key (encrypted at rest, never logged). Binding tokens are long-lived (90 days by default). The human can revoke any binding from `trust.afauth.org/account`.
+There is no bearer token to keep — the agent authenticates each mint by signing the request with its account key (treat that key like an API key: encrypted at rest, never logged). The binding is long-lived (90 days by default); the human can revoke it from `trust.afauth.org/account`.
 
 If you persist the binding and want to skip the link dance on the next run, restore it on construction:
 
@@ -186,10 +187,10 @@ afauth trust forget     # delete the local binding; server-side revocation
 
 ## Recovery
 
-**Lost or compromised binding token** — the agent keeps the same `did:key`:
+**Revoke an agent's access** — the agent keeps the same `did:key`:
 
-1. The human signs in at `trust.afauth.org/account` and revokes the binding.
-2. The agent starts a new link request (step 1 above) — the human confirms it the same way.
+1. The human signs in at `trust.afauth.org/account` and revokes the binding. The agent can no longer mint — its signed `/v1/token` calls return `binding_revoked` — so attested access lapses within the attestation lifetime.
+2. To restore, the agent starts a new link request (step 1 above) — the human confirms it the same way.
 
 **Compromised agent *key*** — the agent has re-keyed to a *new* `did:key` (see [Recover a compromised key](/guides/recover-a-compromised-key)): the new DID has no binding yet, so there is nothing to revoke here. Just run the link flow under the new key, from the same human account, and the new DID gets a fresh binding. The same `sub_h` carries forward because it is keyed on the human, not the key (§10.5.1).
 

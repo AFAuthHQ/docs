@@ -3,7 +3,7 @@ title: "Trust API"
 description: "Endpoints at trust.afauth.org — link flow, attestation tokens, JWKS."
 ---
 
-The trust attestor exposes a small HTTP surface at `trust.afauth.org`. This flow is what every signup to a default (`attested_only`) service requires: agents drive a link request through `/v1/link/*` once, then exchange the resulting binding token for a per-service attestation JWT at `/v1/token` on each request, presenting it as `AFAuth-Attestation`. A service that lacks the header rejects the request with `401 attestation_required`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
+The trust attestor exposes a small HTTP surface at `trust.afauth.org`. This flow is what every signup to a default (`attested_only`) service requires: agents drive a link request through `/v1/link/*` once, then mint a per-service attestation JWT at `/v1/token` — signed with the agent's account key, no bearer token — and present it as `AFAuth-Attestation`. A service that lacks the header rejects the request with `401 attestation_required`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
 
 <Note>
 This page is a reference. For the step-by-step walkthroughs, see
@@ -25,8 +25,8 @@ All requests and responses are JSON (`application/json`) unless noted. All URLs 
 |---|---|---|---|
 | `GET`    | `/.well-known/jwks.json`   | none                       | Public verification keys. Cached 300s. |
 | `POST`   | `/v1/link/start`           | none                       | Agent → returns deep-link URL + poll URL. |
-| `POST`   | `/v1/link/poll`            | request body signature     | Agent → returns binding token once a human has confirmed. |
-| `POST`   | `/v1/token`                | `Bearer <binding_token>`   | Agent → mints a §10 attestation JWT bound to a `service_did`. |
+| `POST`   | `/v1/link/poll`            | request body signature     | Agent → returns the binding (id + expiry) once a human has confirmed. |
+| `POST`   | `/v1/token`                | agent §5 request signature | Agent → mints a §10 attestation JWT bound to a `service_did`. |
 | `DELETE` | `/v1/bindings/{id}`        | session cookie             | Human → revokes a binding from the dashboard. |
 
 The human-facing surface (`/signin`, `/account`, `/link`) is browser UI, not a programmatic API. It is documented here only where it intersects the agent-side flow.
@@ -64,7 +64,7 @@ The TypeScript SDK's `JwksAttestor` (built on `jose`'s `createRemoteJWKSet`) han
 
 ## `POST /v1/link/start`
 
-Open a link request. The agent submits its DID and public key; the trust attestor returns a deep link the agent surfaces to a human, plus a poll URL the agent uses to retrieve the binding token after the human confirms.
+Open a link request. The agent submits its DID and public key; the trust attestor returns a deep link the agent surfaces to a human, plus a poll URL the agent uses to retrieve the binding (id + expiry) after the human confirms.
 
 ### Request
 
@@ -128,12 +128,11 @@ Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited 
 {
   "state":                    "confirmed",
   "binding_id":               "bnd_AbCd1ef-gHIj_klmN0pqRs",
-  "binding_token":            "btk_T1uvWxYz3456_AbCdEfGhIj",
   "binding_token_expires_at": 1772020800
 }
 ```
 
-The binding token is **delivered exactly once** — store it. It is the bearer credential the agent uses to mint attestation JWTs at `/v1/token`. Binding tokens are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is a Unix timestamp.
+`binding_id` records that the agent has linked — there is **no bearer token**. Minting at `/v1/token` is keyless: the agent authenticates by signing the mint request with its account key (see below), so its keypair is the only secret it keeps. Bindings are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is the Unix timestamp at which the binding expires and the agent must re-link.
 
 ### Response — 410 Gone
 
@@ -141,7 +140,7 @@ The binding token is **delivered exactly once** — store it. It is the bearer c
 { "error": { "code": "link_request_expired", "message": "Link request is expired" } }
 ```
 
-Also returned if a confirmed binding token has already been retrieved (each token is poppable once).
+Also returned if a confirmed binding has already been retrieved (the binding info is delivered exactly once).
 
 ---
 
@@ -149,13 +148,17 @@ Also returned if a confirmed binding token has already been retrieved (each toke
 
 Mint an attestation JWT scoped to a single service.
 
+**Keyless authentication.** The agent signs the mint request with its account key using the same [RFC 9421](/concepts/signing) scheme it uses for service requests (covering `@method`, `@target-uri`, and `content-digest`; `keyid` is the agent DID). The attestor verifies the signature offline — the `keyid` is a `did:key`, so no lookup is needed — and maps the verified DID to the agent's binding. The agent's keypair is the sole credential; no bearer token is presented. Sign the full URL `https://trust.afauth.org/v1/token`.
+
 ### Request
 
 ```http
 POST /v1/token HTTP/1.1
 Host: trust.afauth.org
-Authorization: Bearer btk_T1uvWxYz3456_AbCdEfGhIj
 Content-Type: application/json
+Content-Digest: sha-256=:<digest of body>:
+Signature-Input: sig1=("@method" "@target-uri" "content-digest");created=...;expires=...;nonce="...";keyid="did:key:z6Mk...";alg="ed25519"
+Signature: sig1=:<base64 ed25519 signature>:
 
 { "aud": "did:web:api.example.com" }
 ```
@@ -216,7 +219,7 @@ Revoke a binding. Human-only — authenticated by the session cookie set at `tru
 { "ok": true, "revoked_at": "2026-05-29T18:30:00.000Z" }
 ```
 
-After revocation, all subsequent `/v1/token` calls with the binding's token return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
+After revocation, all subsequent `/v1/token` calls signed by the binding's agent key return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
 
 ---
 
@@ -242,7 +245,7 @@ Every non-2xx response uses a structured envelope:
 | `verification_required`   | 403  | Human has no active verification methods (resolve at `trust.afauth.org/account`). |
 | `not_found`               | 404  | Link request or binding not found. |
 | `binding_expired`         | 410  | Binding has passed its `expires_at`; re-link the agent. |
-| `link_request_expired`    | 410  | Link request expired before confirmation, or binding token already retrieved. |
+| `link_request_expired`    | 410  | Link request expired before confirmation, or the binding was already retrieved. |
 | `rate_limited`            | 429  | See rate-limit table below. `Retry-After` header carries the wait in seconds. |
 | `internal_error`          | 500  | Unexpected. Retry, then report. |
 
@@ -259,4 +262,4 @@ Per-IP, fixed-window in Redis.
 | `POST /v1/token`            | 60 / minute (per IP), 10,000 / day (per binding, configurable) |
 | All other read endpoints    | 600 / minute |
 
-The per-binding daily cap (`TRUST_PER_BINDING_DAILY_TOKEN_LIMIT`, default 10,000) prevents a compromised binding token from acting as an unlimited attestation oracle, while leaving headroom for the §10.7 re-mint cadence of an agent active across many services.
+The per-binding daily cap (`TRUST_PER_BINDING_DAILY_TOKEN_LIMIT`, default 10,000) prevents a compromised agent key from acting as an unlimited attestation oracle, while leaving headroom for the §10.7 re-mint cadence of an agent active across many services.
