@@ -26,7 +26,7 @@ All requests and responses are JSON (`application/json`) unless noted. All URLs 
 | `GET`    | `/.well-known/jwks.json`   | none                       | Public verification keys. Cached 300s. |
 | `POST`   | `/v1/link/start`           | none                       | Agent → returns deep-link URL + poll URL. |
 | `POST`   | `/v1/link/poll`            | request body signature     | Agent → returns binding token once a human has confirmed. |
-| `POST`   | `/v1/token`                | `Bearer <binding_token>`   | Agent → mints a §10 attestation JWT bound to a `service_did`. |
+| `POST`   | `/v1/token`                | agent §5 request signature | Agent → mints a §10 attestation JWT bound to a `service_did`. |
 | `DELETE` | `/v1/bindings/{id}`        | session cookie             | Human → revokes a binding from the dashboard. |
 
 The human-facing surface (`/signin`, `/account`, `/link`) is browser UI, not a programmatic API. It is documented here only where it intersects the agent-side flow.
@@ -133,7 +133,7 @@ Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited 
 }
 ```
 
-The binding token is **delivered exactly once** — store it. It is the bearer credential the agent uses to mint attestation JWTs at `/v1/token`. Binding tokens are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is a Unix timestamp.
+`binding_id` records that the agent has linked. Minting at `/v1/token` is **keyless** — the agent authenticates by signing the mint request with its account key (see below), so the keypair is the only secret it must keep. The `binding_token` is a legacy bearer credential retained for backward compatibility during the migration to signed minting; new agents do not need to store it. Bindings are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is a Unix timestamp.
 
 ### Response — 410 Gone
 
@@ -149,13 +149,17 @@ Also returned if a confirmed binding token has already been retrieved (each toke
 
 Mint an attestation JWT scoped to a single service.
 
+**Keyless authentication.** The agent signs the mint request with its account key using the same [RFC 9421](/concepts/signing) scheme it uses for service requests (covering `@method`, `@target-uri`, and `content-digest`; `keyid` is the agent DID). The attestor verifies the signature offline — the `keyid` is a `did:key`, so no lookup is needed — and maps the verified DID to the agent's binding. The agent's keypair is the sole credential; no bearer token is presented. Sign the full URL `https://trust.afauth.org/v1/token`.
+
 ### Request
 
 ```http
 POST /v1/token HTTP/1.1
 Host: trust.afauth.org
-Authorization: Bearer btk_T1uvWxYz3456_AbCdEfGhIj
 Content-Type: application/json
+Content-Digest: sha-256=:<digest of body>:
+Signature-Input: sig1=("@method" "@target-uri" "content-digest");created=...;expires=...;nonce="...";keyid="did:key:z6Mk...";alg="ed25519"
+Signature: sig1=:<base64 ed25519 signature>:
 
 { "aud": "did:web:api.example.com" }
 ```
@@ -163,6 +167,10 @@ Content-Type: application/json
 | Field | Type   | Required | Notes |
 |---|---|---|---|
 | `aud` | string | yes      | The destination service's `service_did`. The JWT's `aud` will equal this value. |
+
+<Note>
+During the migration window the attestor also accepts the legacy `Authorization: Bearer <binding_token>` form. A §5 signature takes precedence when both are present. New agents should sign; the bearer path will be removed in a later release.
+</Note>
 
 ### Response — 200 OK
 
@@ -216,7 +224,7 @@ Revoke a binding. Human-only — authenticated by the session cookie set at `tru
 { "ok": true, "revoked_at": "2026-05-29T18:30:00.000Z" }
 ```
 
-After revocation, all subsequent `/v1/token` calls with the binding's token return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
+After revocation, all subsequent `/v1/token` calls for the binding's agent DID — whether signed by its key or presenting its legacy token — return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
 
 ---
 
