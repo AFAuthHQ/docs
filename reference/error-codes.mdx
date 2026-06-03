@@ -27,7 +27,7 @@ Every reserved code, its HTTP status, the spec section that triggers it, and a o
 | `account_expired` | `410` | Account exceeded `unclaimed_ttl_seconds` without being claimed | §6.1 | Onboard a fresh agent |
 | `already_claimed` | `409` | Operation requires `UNCLAIMED` / `INVITED` state but account is already `CLAIMED` | §11.2 | Stop — claim has already happened |
 | `not_claimed` | `409` | Operation requires `CLAIMED` state but account isn't claimed yet | §11.2 | Send an owner invitation first |
-| `owner_authentication_required` | `403` | Operation requires an owner-authenticated session; none was supplied (or supplied identity doesn't match the match relation) | §7.4 | Prompt the human to authenticate at the claim page |
+| `owner_authentication_required` | `401` · `403` | `401` when no owner session is presented for an owner-binding op (re-key §8.2 / revoke §8.4); `403` when a session is present but doesn't own the target account, or a claim identity fails the match relation (§7.4) | §7.4, §8.2, §8.4 | Authenticate the owner (fresh session) and retry |
 | `owner_session_too_stale` | `403` | Owner session present but `authenticatedAt` is missing or older than the §7.5 freshness window (60-300s) | §7.5 | Prompt the human to re-authenticate, then retry |
 | `owner_binding_blocked` | `403` | An agent-signed request attempted an owner-binding operation post-claim | §7.5 | Stop — this operation requires the owner |
 | `rate_limit_exceeded` | `429` | Per-route per-DID rate-limit bucket exhausted | §11.3 | Honour the `Retry-After` header |

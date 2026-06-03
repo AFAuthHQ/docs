@@ -3,7 +3,7 @@ title: "@afauthhq/worker"
 description: "Cloudflare Workers bindings: createWorker, DurableObjectNonceStore, KvNonceStore, KvRevocationList, KvAttestedFreshnessStore, KvRateLimiter, D1AccountStore."
 ---
 
-<Note>Stub — overview only. Per-symbol reference is synced from typedoc output.</Note>
+<Note>Overview only. Per-symbol typedoc reference is planned but not yet published.</Note>
 
 Alongside the nonce/revocation/rate-limit/account stores, `@afauthhq/worker` ships **`KvAttestedFreshnessStore`** — the KV-backed `AttestedFreshnessStore` for §10.7 [attested sessions](/guides/keep-attested-access-live). Pass it via `attestedSession: { store }`; its KV entries' TTL is set to the remaining window, so lapsed sessions self-evict.
 

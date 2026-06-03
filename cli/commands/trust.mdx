@@ -3,7 +3,7 @@ title: "afauth trust"
 description: "Bind an agent to a human-controlled account at an afauth-trust attestor (AFAP-0006), and mint per-service attestation JWTs."
 ---
 
-<Note>Stub — synced from `AFAuthHQ/cli` cobra doc-gen output on release.</Note>
+<Note>Hand-maintained reference. For the authoritative flags on your installed version, run the command with `--help`.</Note>
 
 `afauth trust` manages the agent's binding to a human account at an
 [afauth-trust attestor](/concepts/trust-attestor). The binding lets the agent
@@ -47,6 +47,7 @@ afauth trust token did:web:api.example.com
 
 | Flag | Default | Notes |
 |---|---|---|
+| `--key` | `~/.afauth/key.json` | Agent key path (must match the linked binding). |
 | `--timeout` | `30` | Request timeout in seconds. |
 
 ## `afauth trust status`

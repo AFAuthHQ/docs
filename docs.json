@@ -107,6 +107,7 @@
             "pages": [
               "cli/commands/init",
               "cli/commands/whoami",
+              "cli/commands/status",
               "cli/commands/discover",
               "cli/commands/call",
               "cli/commands/trust",

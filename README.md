@@ -6,11 +6,9 @@ Built with [Mintlify](https://mintlify.com).
 
 ## Layout
 
-- **Authored here**: `concepts/`, `guides/`, `sdk/`, `cli/`, `reference/`, `snippets/`.
+- **Authored here (hand-maintained)**: `concepts/`, `guides/`, `sdk/`, `cli/`, `reference/`, `snippets/`. This includes the `sdk/typescript/*/overview.mdx` pages and every `cli/commands/*.mdx` page: the typedoc and cobra doc-gen syncs that will eventually generate per-symbol / per-command reference are **not yet wired** (`scripts/sync-typescript-sdk.ts` and `scripts/sync-cli.ts` are currently no-op stubs). Edit these by hand until then.
 - **Synced from upstream — do not edit by hand**:
-  - `spec/` ← `AFAuthHQ/spec`
-  - `sdk/typescript/*/reference/` ← `AFAuthHQ/typescript-sdk` (typedoc output)
-  - `cli/commands/` ← `AFAuthHQ/cli` (cobra doc-gen output)
+  - `spec/` ← `AFAuthHQ/spec` (via `scripts/sync-spec.ts`)
 
 ## Local development
 
@@ -23,11 +21,13 @@ npx mint validate     # strict build validation (what CI runs)
 
 ## Syncing
 
-- **Spec** syncs on every push to `AFAuthHQ/spec@main` (event-driven via `repository_dispatch`), with a 06:00 UTC cron as fallback.
-- **TypeScript SDK reference** syncs on every release tag in `AFAuthHQ/typescript-sdk`.
-- **CLI reference** syncs on every release tag in `AFAuthHQ/cli`.
+Only the **spec** sync is live today. The SDK and CLI syncs are scaffolded but not yet wired (see the no-op stubs in `scripts/`).
 
-Each sync opens a PR labelled `automerge: <source>-sync`. The PR auto-merges if:
+- **Spec** syncs on every push to `AFAuthHQ/spec@main` (event-driven via `repository_dispatch`), with a 06:00 UTC cron as fallback.
+- **TypeScript SDK reference** *(planned — not yet wired)*: will sync on every release tag in `AFAuthHQ/typescript-sdk` once `scripts/sync-typescript-sdk.ts` is implemented (typedoc → `repository_dispatch`).
+- **CLI reference** *(planned — not yet wired)*: will sync on every release tag in `AFAuthHQ/cli` once `scripts/sync-cli.ts` is implemented (cobra doc-gen → `repository_dispatch`).
+
+The spec sync opens a PR labelled `automerge: spec-sync`. The PR auto-merges if:
 
 1. Mintlify build passes
 2. Link check passes

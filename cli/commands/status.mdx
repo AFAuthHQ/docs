@@ -1,0 +1,49 @@
+---
+title: "afauth status"
+description: "Local readiness dashboard: identity, key location, trust-attestor linkage, and known accounts."
+---
+
+`afauth status` prints a local snapshot of the agent's identity and readiness — the `did:key`, where the key lives, the trust-attestor binding (and whether it's live), and a summary of known accounts. Where [`afauth whoami`](/cli/commands/whoami) prints the bare `did:key` for scripts, `status` answers the operational question: *who am I, where's my key, and am I linked to a trust attestor?*
+
+```bash
+afauth status
+afauth status --json
+```
+
+It reads only local files (`key.json`, `trust.json`, `accounts.json`) and makes **no network calls**, so the link state is a local judgment — it flags expired and orphaned bindings, but cannot confirm a server-side revocation at the attestor.
+
+## Output
+
+```text
+DID        did:key:z6Mk...
+Key file   ~/.afauth/key.json
+Algorithm  ed25519
+Created    2026-05-20T12:00:00Z
+Link       ✓ trust.afauth.org · live, expires in 88d (email)
+Accounts   2 services — 1 UNCLAIMED, 1 CLAIMED   → afauth accounts list
+```
+
+If no identity exists yet, `status` prints a hint to run `afauth init` and exits.
+
+### Link states
+
+| State | Meaning |
+|---|---|
+| `not linked` | No binding on file — `attested_only` services will reject signup. Run [`afauth trust link`](/cli/commands/trust). |
+| `live` | Binding is valid and matches the active key. |
+| `expiring` | Binding is valid but within 48h of expiry — re-link soon. |
+| `expired` | Binding has passed its expiry — re-link. |
+| `orphaned` | Binding is for a different key (e.g. after a key rotation that left `trust.json` behind) — re-link. |
+
+## Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--key` | `$AFAUTH_HOME/key.json` or `~/.afauth/key.json` | Key file to inspect. |
+| `--json` | `false` | Emit a stable machine-readable object instead of the human view. |
+
+## See also
+
+- [`afauth whoami`](/cli/commands/whoami) — the bare `did:key`, for scripts.
+- [`afauth trust`](/cli/commands/trust) — link to a human and mint attestations.
+- [`afauth accounts`](/cli/commands/accounts) — inspect accounts this agent has created.
