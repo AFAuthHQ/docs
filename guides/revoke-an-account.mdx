@@ -10,21 +10,22 @@ Revoking an account's key stops it cold at your service — the next request sig
 If you advertise the `key_revocation` endpoint, extract the owner session with your own auth layer and hand the request to the SDK:
 
 ```ts
-// POST /afauth/v1/accounts/me/keys/revoke — body { account_did }
+// POST /afauth/v1/accounts/me/keys/revoke — body { account_id } or { agent_did }
 export async function handleOwnerRevoke(req: Request, session: OwnerSession) {
   return server.handleKeyRevocation(req, session);
 }
 ```
 
-It enforces the §7.5 freshness floor, checks the session owns the account, then revokes. Response: `200 { account_did, revoked_at }`. Re-revoking is idempotent.
+Name the account directly by `account_id`, or by any one of its agent credentials via `agent_did` (revoke the account that device belongs to). It enforces the §7.5 freshness floor, checks the session owns the account, then revokes — blocking **every** credential on the account (§10.4.4: one account, many devices). Response: `200 { account_id, revoked_at }`. Re-revoking is idempotent.
 
-## Bare primitive: `Server.revoke(did)`
+## Bare primitive: `Server.revoke(accountId)`
 
-For internal or abuse-handling tooling where you already hold the DID, `Server.revoke(did)` marks the account revoked and adds the DID to the revocation list. It's **un-gated**, so you must gate it on a fresh owner session yourself:
+For internal or abuse-handling tooling, `Server.revoke(accountId)` marks the whole account revoked and adds every one of its agent credentials to the revocation list. It's **un-gated**, so you must gate it on a fresh owner session yourself. If you only hold a credential DID, resolve its account first:
 
 ```ts
 assertFreshOwnerSession(session, { maxAgeSeconds: 120 });
-await server.revoke(did);
+const account = await accounts.getByAgentDid(did); // resolve the credential → its account
+await server.revoke(account.accountId);
 ```
 
 See [`examples/recipes/revoke.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/revoke.ts) for both paths.

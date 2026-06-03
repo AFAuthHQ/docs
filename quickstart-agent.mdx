@@ -31,7 +31,7 @@ const res = await fetch(signed.url, {
 
 const account = await res.json();
 console.log(account);
-// { account_did: "did:key:z6Mk...", state: "UNCLAIMED", ... }
+// { account_id: "acct_...", agent_did: "did:key:z6Mk...", state: "UNCLAIMED", ... }
 ```
 
 A few things just happened:

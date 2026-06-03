@@ -50,7 +50,7 @@ export async function handleOwnerReKey(req: Request, session: OwnerSession) {
 }
 ```
 
-The owner binding carries forward. For `did:key` the account identifier becomes the **new** DID (returned in the response); the old DID stays revoked. The agent restarts with the new key.
+The owner binding carries forward and **`account_id` is stable** — the re-key swaps the credential within the same account (§10.4.4: one account, many devices), it does not create a new one. The agent's credential becomes the **new** DID (returned in the response as `agent_did`); the old DID stays revoked. The agent restarts with the new key.
 </Step>
 
 <Step title="Re-link the new key at the attestor">
@@ -76,7 +76,7 @@ If you used per-binding **Revoke** in step 1, skip this — the account was neve
 
 - **The agent's local state is untrusted.** Don't rely on the agent cleaning up its own cache or ledger — the attacker controls it. Recovery is owner- and service-side only.
 - **Signature-only, non-attested services are a blind spot for attestor-side action.** Only that service's own revoke reaches them (step 2). For high-value operations, gate on live attestation — per-request, or a lighter-weight [attested session](/guides/keep-attested-access-live) (§10.7) — so an attestor-side revoke actually takes effect.
-- **`did:key` re-key changes the identifier.** Re-key returns the new DID; any service-internal state keyed on the old DID must be moved to it. Agent identities are [`did:key`](/concepts/identity-and-keys) — there is no stable-identifier agent method, so this is inherent, not a setting to avoid.
+- **Re-key swaps the credential, not the account.** `account_id` is stable across a re-key (§10.4.4), so the owner binding and any state you keyed on `account_id` carry forward; only the agent's credential DID changes (returned as `agent_did`), so service-internal state keyed on the raw DID must be moved. Agent credentials are [`did:key`](/concepts/identity-and-keys) — there is no stable-identifier agent *DID* method, so the credential rolling on re-key is inherent.
 
 ## You don't need routine rotation
 

@@ -28,7 +28,7 @@ Tradeoffs:
 
 - **Verifiable offline.** Anyone can verify a `did:key` signature with just the DID string and the signature itself.
 - **Cheap to generate.** `Agent.generate()` in the TypeScript SDK takes microseconds.
-- **The identifier changes when the key changes.** If the agent rotates its key, the account identifier changes — external references to the old DID stop resolving. Recovery from a lost or compromised key is therefore **owner-driven** (revoke + re-key), not a property of a stable identifier. See [Recover a compromised key](/guides/recover-a-compromised-key).
+- **The DID changes when the key changes.** Rotating the key changes the agent's `did:key`, so external references to the old DID stop resolving. (A service may group a human's credentials under a stable, service-side `account_id` — §10.4.4, "one account, many devices" — so a post-claim re-key keeps the *same account*; the `did:key` itself is still not a stable identifier.) Recovery from a lost or compromised key is therefore **owner-driven** (revoke + re-key). See [Recover a compromised key](/guides/recover-a-compromised-key).
 
 <Note>
 **Why not a stable, DNS-anchored identifier (`did:web`) for agents?** Because
@@ -58,7 +58,7 @@ The reference CLI stores the active key at `~/.afauth/key.json` with mode `0600`
 
 Ed25519 verification keys have no usage-based wear, so there's **no need for routine, scheduled rotation**. You change a key for exactly two reasons — to migrate identifiers, or to recover from compromise — and how you do it depends on whether the account is claimed.
 
-**Pre-claim (agent-driven).** While the account is `UNCLAIMED`/`INVITED`, the agent rotates by signing a rotation request with the **old** key; the service decommissions the old DID (adds it to the revocation list) and accepts the new one. For `did:key` the account identifier changes — the identifier *is* the key — so external references to the old DID stop resolving. See [Rotate keys](/guides/rotate-keys).
+**Pre-claim (agent-driven).** While the account is `UNCLAIMED`/`INVITED`, the agent rotates by signing a rotation request with the **old** key; the service decommissions the old DID (adds it to the revocation list) and accepts the new one. The agent's `did:key` changes — the DID *is* the key — so external references to the old DID stop resolving. See [Rotate keys](/guides/rotate-keys).
 
 **Post-claim (owner-driven).** Once claimed, the agent's signature alone can no longer change the key — that would break the [two-step-verify invariant](/concepts/ceremony). The **owner** revokes and re-keys from a fresh owner-authenticated session. This is the compromise-recovery path: see [Recover a compromised key](/guides/recover-a-compromised-key).
 

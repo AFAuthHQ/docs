@@ -18,7 +18,7 @@ const signed = await oldAgent.buildKeyRotation({ baseUrl, newDid: newAgent.did }
 `Server.handleKeyRotation` verifies the old key's signature, moves the account to the new DID, and adds the old DID to the revocation list (§8.3). A request signed by the old key afterwards fails with `401 revoked_key`.
 
 <Note>
-**`did:key` changes the account identifier on rotation** — the identifier *is* the key, so external references to the old DID stop resolving; a caller holding the old DID updates its reference from the rotation response. Agent identities are `did:key` and AFAuth has no stable-identifier agent method, so recovery is owner-driven (revoke + re-key), not a persistent DID. See [Identity and keys](/concepts/identity-and-keys).
+**`did:key` changes the agent's DID on rotation** — the DID *is* the key, so external references to the old DID stop resolving; a caller holding the old DID updates its reference from the rotation response (`agent_did`). Agent credentials are `did:key` and AFAuth has no stable-identifier agent DID method, so recovery is owner-driven (revoke + re-key), not a persistent DID. (Post-claim, a service-side `account_id` is stable across re-key — §10.4.4 — so the account survives even as the DID rolls.) See [Identity and keys](/concepts/identity-and-keys).
 </Note>
 
 ## Claimed accounts can't self-rotate
