@@ -17,19 +17,19 @@ import InstallSdk from "/snippets/install-sdk.mdx";
 [`Server`](/sdk/typescript/server/overview) — the same class that wraps
 [`Verifier`](/concepts/signing) and exposes endpoint handlers for
 discovery, signup, account introspection, owner invitation, claim
-completion, and key rotation — but with three spam-resistance switches
+completion, and key rotation — but with two spam-resistance switches
 flipped ON by default:
 
 1. Discovery advertises `billing.unclaimed_mode: "attested_only"` (§9.2).
 2. The attestor defaults to `trustAttestor()` (AFAP-0006 §10).
-3. Per-principal uniqueness (§10.4.4) is enforced.
 
 The net effect: un-attested implicit signups are rejected at the wire,
-and a second account for a human who already has one is rejected with
-`409 principal_already_registered` — all of a human's agents carry the
-same per-service pseudonym `sub_h` (§10.4), so one human is one bucket
-regardless of how many keypairs they spin up. (Pass `subHUniqueness: false`
-if you run agent fleets and want many agents per human.)
+and all of a human's agents — which carry the same per-service pseudonym
+`sub_h` (§10.4) — are **grouped onto one account** (§10.4.4: one account,
+many devices). Bucket your free-tier quota, rate limits, and bans on the
+account and a human's whole fleet shares one bucket, no matter how many
+keypairs they spin up — while their legitimate PC and phone agents both
+keep working.
 
 <Note>
 Because this default rejects un-attested signups, an agent reaches your
@@ -137,7 +137,7 @@ For deeper conformance, run the spec's Appendix C vectors against your `Verifier
 
 ## Production checklist
 
-- Swap `Memory*` stores for durable backends. `@afauthhq/worker` ships `D1AccountStore`, `D1SubHUniquenessStore` (atomic per-principal uniqueness), `KvNonceStore`, `KvRevocationList`. The default `MemorySubHUniquenessStore` is process-local — supply `D1SubHUniquenessStore` so "one account per human" holds across instances and restarts. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
+- Swap `Memory*` stores for durable backends. `@afauthhq/worker` ships `D1AccountStore` (multi-agent accounts; atomic device-grouping via the `(iss, sub_h)` index), `KvNonceStore`, `KvRevocationList`. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
 - Replace `consoleEmailHandler` with a real email transport.
 - Host the claim page — the SDK doesn't route it for you because it's service UI. Reference: [`examples/worker/src/index.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts).
 - Decide your [billing mode](/concepts/attestation). The `defineService` default is `attested_only` — set `attestation: "off"` to opt out, or `"optional"` for a migration path.

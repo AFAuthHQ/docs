@@ -1,10 +1,10 @@
 ---
 title: "@afauthhq/worker"
-description: "Cloudflare Workers bindings: createWorker, DurableObjectNonceStore, KvNonceStore, KvRevocationList, KvAttestedFreshnessStore, KvRateLimiter, D1AccountStore, D1SubHUniquenessStore."
+description: "Cloudflare Workers bindings: createWorker, DurableObjectNonceStore, KvNonceStore, KvRevocationList, KvAttestedFreshnessStore, KvRateLimiter, D1AccountStore."
 ---
 
 <Note>Stub — overview only. Per-symbol reference is synced from typedoc output.</Note>
 
 Alongside the nonce/revocation/rate-limit/account stores, `@afauthhq/worker` ships **`KvAttestedFreshnessStore`** — the KV-backed `AttestedFreshnessStore` for §10.7 [attested sessions](/guides/keep-attested-access-live). Pass it via `attestedSession: { store }`; its KV entries' TTL is set to the remaining window, so lapsed sessions self-evict.
 
-It also ships **`D1SubHUniquenessStore`** — the durable, atomic backend for §10.4.4 [per-principal uniqueness](/concepts/attestation) ("same human, same bucket"). Its composite `(iss, sub_h)` PRIMARY KEY makes `claim()` atomic across isolates (which a KV get-then-put can't do, so there is no KV variant). Apply migration `0002_subh_uniqueness.sql` and pass it via `subHUniqueness`. `createWorker` mirrors `new Server`, so — unlike `defineService` — it does not default this; wire it explicitly to get the guarantee.
+**`D1AccountStore`** is the durable, multi-agent [account store](/concepts/attestation): an account is keyed on an opaque `account_id` and groups a human's agent credentials by `(iss, sub_h)` (§10.4.4: one account, many devices). The grouping is atomic across isolates — its schema's `(iss, sub_h)` UNIQUE index lets concurrent first-signups of the same human converge on one account (`INSERT … ON CONFLICT`). Apply migration `0001_init.sql` and pass it as `accounts`.
