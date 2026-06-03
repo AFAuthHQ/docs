@@ -7,7 +7,7 @@ An `attested_only` service that checks attestation **once at signup** and therea
 
 [§10.7](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#107-attested-sessions-periodic-re-presentation) closes that gap without paying the cost of re-checking attestation on **every** request. The service keeps a **currently-valid attestation on file** per account — an *attested session* — and challenges with `401 attestation_required` once it lapses. The agent answers by minting a fresh attestation and retrying. Revoke the binding at the attestor and the agent can no longer mint, so every attested-session service drops the account within its freshness window.
 
-It's the OAuth refresh pattern applied to attestation: the **binding token is the refresh token**, the **attestation is the short-lived access token**, and revoking the binding kills the access within the access token's lifetime.
+It's the OAuth refresh pattern applied to attestation: the agent's **live binding at the attestor is the refresh grant** — it re-mints by signing `/v1/token` with its account key — the **attestation is the short-lived access token**, and revoking the binding kills the access within the access token's lifetime.
 
 <Note>
 Opt-in, for `attested_only` services (the [`defineService`](/sdk/typescript/server/overview) default). Advertise support with the `attested_session` feature in your discovery document. Services that don't opt in keep the signup-only behaviour.

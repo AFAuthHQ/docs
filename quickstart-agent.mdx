@@ -75,7 +75,8 @@ let binding;
 while (!(binding = await trust.linkPoll(start.req_id))) {
   await new Promise((r) => setTimeout(r, 2_000));
 }
-// Persist binding.binding_token securely — it is delivered ONCE.
+// `binding` is { binding_id, binding_token_expires_at } — no secret here.
+// The agent's keypair is the only credential; mints are signed with it.
 
 // 3. Mint a per-service attestation and attach it to the signed request.
 const { jwt } = await trust.token("did:web:api.example.com");
