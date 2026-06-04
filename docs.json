@@ -25,6 +25,7 @@
           {
             "group": "Concepts",
             "pages": [
+              "concepts/how-it-works",
               "concepts/why-afauth",
               "concepts/identity-and-keys",
               "concepts/ceremony",
