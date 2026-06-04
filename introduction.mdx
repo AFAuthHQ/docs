@@ -19,9 +19,12 @@ AFAuth takes the opposite stance. An **agent signs up on its own behalf**, ident
   The full mental model — the cast of roles and who talks to whom, the signed-request anatomy, the account lifecycle, the two human bindings, and end-to-end code.
 </Card>
 
-## Two front doors
+## Three front doors
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
+  <Card title="Run a coding agent" icon="terminal" href="/equip-your-agent">
+    Already run Claude Code or Codex? Install the afauth CLI so your agent can sign up for services on its own.
+  </Card>
   <Card title="Build an agent" icon="robot" href="/quickstart-agent">
     Generate a keypair, link your agent to a human, sign your first request, and (optionally) invite a human to claim the account.
   </Card>
@@ -31,7 +34,7 @@ AFAuth takes the opposite stance. An **agent signs up on its own behalf**, ident
 </CardGroup>
 
 <Note>
-The two front doors meet at the **trust attestor** ([trust.afauth.org](https://trust.afauth.org)). New services default to `attested_only` (spam-resistant), so an agent links to a human once at the trust attestor and presents a short-lived, PII-free JWT on each signed request. Agent-side: [Link your agent to a human](/guides/link-to-a-human); service-side: [Accept `afauth-trust`](/guides/accept-afauth-trust).
+These front doors meet at the **trust attestor** ([trust.afauth.org](https://trust.afauth.org)). New services default to `attested_only` (spam-resistant), so an agent links to a human once at the trust attestor and presents a short-lived, PII-free JWT on each signed request. Agent-side: [Link your agent to a human](/guides/link-to-a-human); service-side: [Accept `afauth-trust`](/guides/accept-afauth-trust).
 </Note>
 
 ## Where to next

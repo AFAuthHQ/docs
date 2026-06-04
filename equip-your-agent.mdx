@@ -1,0 +1,136 @@
+---
+title: "Use AFAuth with Claude Code & Codex"
+description: "Install the afauth CLI so the coding agent you already run can sign up for and use services on its own — as itself, with you on the hook and ownership you can claim later."
+---
+
+import InstallCli from "/snippets/install-cli.mdx";
+
+If you already run a coding agent — **Claude Code**, **Codex**, **Cursor**, or anything that can run shell commands — AFAuth gives it an **identity**. Install one small binary, link it to yourself once, and your agent can sign up for and use AFAuth-supporting services *on its own* — as itself, not by borrowing your passwords or pausing for you at every step.
+
+You set it up once. After that it's hands-off: ask your agent to use a service, and it signs up and makes authenticated requests by itself.
+
+<Note>
+**Who this is for.** You're not building an agent or running a service — you just want the agent you *already use* to reach services. Building an agent product instead? See [Build an agent](/quickstart-agent). Running a service that should accept agents? See [Accept AFAuth](/quickstart-service).
+</Note>
+
+## What you get
+
+- An identity your agent controls — a `did:key`, no shared passwords, no signup forms to automate.
+- Reach to **spam-resistant** services, because the agent is linked to a real human (you) — while exposing **none** of your personal information to those services.
+- Control that stays with you: you own the key, you can claim anything it signs up for, and you can revoke it anytime (more below).
+
+## Set it up once
+
+<Steps>
+
+<Step title="Install the afauth CLI">
+
+<InstallCli />
+
+Confirm it's on your `PATH` — `afauth --help` lists the commands.
+
+</Step>
+
+<Step title="Give your agent an identity">
+
+```bash
+afauth init
+```
+
+Generates an Ed25519 keypair at `~/.afauth/key.json`. That key *is* your agent's identity.
+
+</Step>
+
+<Step title="Link it to yourself">
+
+```bash
+afauth trust link
+```
+
+This opens [trust.afauth.org](https://trust.afauth.org) in your browser and asks you to confirm. You're vouching that a real person — you — stands behind this agent, which is what lets **spam-resistant services** accept it. It shares **no personal information** with those services; they only ever see a per-service pseudonym.
+
+You do this **once** (the link lasts ~90 days), and only *you* can: it's the human-on-the-hook step, and the agent can't fake it.
+
+<Note>
+Most services run `attested_only`, so this step is required before your agent can sign up — after it, `afauth signup` mints the short-lived proof automatically. Full detail: [Link your agent to a human](/guides/link-to-a-human).
+</Note>
+
+</Step>
+
+<Step title="Tell your agent the commands exist">
+
+Your agent drives `afauth` by running it in the shell — it just needs to *know* the commands are there and when to reach for them. Paste this into the instruction file your tool reads:
+
+```markdown
+## AFAuth — signing up for services
+
+This machine has the `afauth` CLI, already linked to the user. To sign up for or
+call a service that supports AFAuth, use it instead of creating an account with an
+email and password:
+
+- `afauth discover <url>`   — check whether a service supports AFAuth
+- `afauth signup <url>`     — sign up (auto-attests when the service requires it)
+- `afauth call <url>`       — make a signed request (add --method / --data / --header)
+- `afauth accounts list`    — list services already joined
+
+Do NOT run `afauth trust link`, `afauth keys`, or `afauth invite` without asking
+the user first — those touch the user's identity and account ownership. If a
+command fails asking for trust or attestation, tell the user to run `afauth trust link`.
+```
+
+| Your tool | Paste it into |
+|---|---|
+| **Claude Code** | `CLAUDE.md` (project) or `~/.claude/CLAUDE.md` (global) |
+| **Codex** | `AGENTS.md` |
+| **Cursor** | a Project Rule under `.cursor/rules/` |
+
+</Step>
+
+</Steps>
+
+## Now your agent signs up on its own
+
+Ask it in plain language:
+
+> "Sign up for Tavily and run a search for recent AFAuth coverage."
+
+It runs the steps itself — no forms, no shared credentials:
+
+```bash
+afauth discover https://tavily.com    # confirms AFAuth support
+afauth signup   https://tavily.com    # signs up; auto-mints the attestation
+afauth call     https://tavily.com/...  # the signed, authenticated request
+```
+
+Every account it creates starts **unclaimed and agent-operated** — it keeps working with no further input from you, until you decide to take ownership.
+
+## What stays under your control
+
+This is what makes letting an agent loose actually safe:
+
+- **You own the key.** Everything lives under `~/.afauth/`; `key.json` is the sole credential. Back it up once — `afauth keys export --out afauth-backup.json` — and store it somewhere safe.
+- **Abuse is bounded to you, not multiplied.** Because the agent is linked to one human, a service rate-limits and bans per *human* — your whole fleet shares one bucket. A runaway or stolen agent can't pose as thousands of fresh customers.
+- **You can claim anything it created.** Turn any account into a human-owned one whenever you like: `afauth invite you@example.com --service <url>`, then confirm from your inbox. See [Invite and claim](/guides/invite-and-claim).
+- **You can revoke it anytime.** Drop the human link (`afauth trust forget`, or revoke at `trust.afauth.org/account`), [rotate the key](/guides/rotate-keys), or [recover a compromised one](/guides/recover-a-compromised-key).
+- **The agent can't sign ownership away.** Its signature alone can never bind an account to anyone else — claiming *always* requires a human authenticating at the invited address. That's the protocol's [security boundary](/concepts/ceremony).
+
+<Warning>
+**AFAuth is identity, not a wallet.** It proves *who* your agent is; it does not authorize spending or accept a service's terms on your behalf beyond the signup itself. A service's own billing, quotas, and terms of service still apply — review them before pointing an autonomous agent at anything that can charge you.
+</Warning>
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="The full CLI" icon="terminal" href="/cli/overview">
+    Every `afauth` command, grouped by what it does.
+  </Card>
+  <Card title="Claim an account" icon="user-check" href="/guides/invite-and-claim">
+    Become the human owner of something your agent created.
+  </Card>
+  <Card title="How the human link works" icon="link" href="/guides/link-to-a-human">
+    What `afauth trust link` proves — and what it deliberately keeps private.
+  </Card>
+  <Card title="Why agents need their own identity" icon="circle-question" href="/concepts/why-afauth">
+    The case for agent-first auth, in one page.
+  </Card>
+</CardGroup>
