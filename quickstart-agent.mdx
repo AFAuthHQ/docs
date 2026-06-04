@@ -19,7 +19,7 @@ import { Agent } from "@afauthhq/agent";
 const agent = await Agent.generate();
 console.log(agent.did); // "did:key:z6Mk..."
 
-// Build a signed GET against the service's /accounts/me endpoint.
+// Build a signed GET against the service's /afauth/v1/accounts/me endpoint.
 const signed = await agent.buildAccountIntrospection({
   baseUrl: "https://api.example.com",
 });

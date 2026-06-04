@@ -75,10 +75,13 @@ const server = defineService({
 });
 ```
 
-The synthesized discovery doc derives endpoints from `baseUrl`
-(`/accounts`, `/owner-invitations`, `/claim`, `/claim/complete`). To
-customize paths, advertise additional `accepted_attestors`, or declare
-`limits`, pass a `discovery` override — it merges on top:
+The synthesized discovery doc derives the canonical §4.1 endpoints from
+`baseUrl`: `/afauth/v1/accounts`, `/afauth/v1/accounts/me/owner-invitation`,
+`/afauth/v1/accounts/me/keys/rotate`, and `/afauth/v1/claim` (plus the
+`/claim` claim page). These match the paths `@afauthhq/agent` signs, so a
+default agent interoperates out of the box. To customize paths, advertise
+additional `accepted_attestors`, or declare `limits`, pass a `discovery`
+override — it merges on top:
 
 ```typescript
 defineService({
