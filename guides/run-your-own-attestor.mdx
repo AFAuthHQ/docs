@@ -93,6 +93,8 @@ const server = new Server({
 });
 ```
 
+(With `defineService` instead of raw `new Server`, `accepted_attestors` is derived from the attestor's issuers automatically — see [Accept an attestor](/guides/accept-afauth-trust).)
+
 The service-side walkthrough — discovery declaration, policy, failure modes — is [Accept an attestor](/guides/accept-afauth-trust). Because consumers **pin** the JWKS URLs they trust, your attestor is honored only by services that explicitly list your `iss`.
 
 </Step>

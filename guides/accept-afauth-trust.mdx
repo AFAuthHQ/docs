@@ -119,7 +119,28 @@ The `Verifier` automatically:
 - Validates `iss == "afauth-trust"`, `aud == your service_did`, `sub == signing DID`, and `exp` in the future.
 - Rejects with `401 invalid_attestation` (malformed / bad signature / wrong `aud` / expired) or `401 attestation_required` (missing under `attested_only`).
 
-Use multiple attestors — for example accepting an internal HMAC alongside `afauth-trust` — by composing them with [`MultiAttestor`](/concepts/attestation#three-attestor-classes).
+Accept more than one attestor by composing them with [`MultiAttestor`](/concepts/attestation#three-attestor-classes) — e.g. `afauth-trust` plus an internal HMAC, or a [self-hosted attestor](/guides/run-your-own-attestor) under its own `iss`. With `defineService`, the attestor's issuers are advertised in `billing.accepted_attestors` **automatically** — no need to hand-list them:
+
+```typescript
+import { defineService, trustAttestor, JwksAttestor, MultiAttestor } from "@afauthhq/server";
+
+const server = defineService({
+  baseUrl, serviceDid, accounts, recipients,
+  attestor: new MultiAttestor([
+    trustAttestor(),
+    new JwksAttestor({
+      iss: "acme-trust",
+      jwksUrl: "https://trust.acme.example/.well-known/jwks.json",
+      algorithms: ["EdDSA"],
+    }),
+  ]),
+  // discovery.billing.accepted_attestors is derived from the attestor →
+  // ["afauth-trust", "acme-trust"]. Pass discovery.billing.accepted_attestors
+  // only to override it.
+});
+```
+
+With raw `new Server({...})` (no `defineService`) you write the full discovery document yourself, so list every `iss` in `billing.accepted_attestors` to match the attestors you wired — it isn't derived for you there.
 
 </Step>
 
