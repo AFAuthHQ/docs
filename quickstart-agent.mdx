@@ -55,7 +55,7 @@ const privateKey = agent.exportPrivateKey();
 
 Services created with `defineService` default to `unclaimed_mode: "attested_only"` (§9.2) — the service from the [service quickstart](/quickstart-service) is one of them. They reject an un-attested signed request with `401 attestation_required` and create no account. To be accepted, the agent presents a short-lived JWT from the canonical trust attestor at [trust.afauth.org](https://trust.afauth.org) proving a verified human stands behind it — carrying no PII.
 
-You do this **once** per human/agent pair; the binding persists (90 days by default), and each per-service JWT is minted fresh.
+You do this **once** per human/agent pair; the binding persists as long as the agent keeps minting (it lapses only after ~90 days of inactivity), and each per-service JWT is minted fresh.
 
 ```typescript
 import { Agent, TrustClient } from "@afauthhq/agent";

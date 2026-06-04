@@ -49,7 +49,7 @@ afauth trust link
 
 This opens [trust.afauth.org](https://trust.afauth.org) in your browser and asks you to confirm. You're vouching that a real person — you — stands behind this agent, which is what lets **spam-resistant services** accept it. It shares **no personal information** with those services; they only ever see a per-service pseudonym.
 
-You do this **once** (the link lasts ~90 days), and only *you* can: it's the human-on-the-hook step, and the agent can't fake it.
+You do this **once**: the link stays valid as long as your agent keeps using it, lapsing only after ~90 days of no use. And only *you* can do it — it's the human-on-the-hook step, the agent can't fake it.
 
 <Note>
 Most services run `attested_only`, so this step is required before your agent can sign up — after it, `afauth signup` mints the short-lived proof automatically. Full detail: [Link your agent to a human](/guides/link-to-a-human).

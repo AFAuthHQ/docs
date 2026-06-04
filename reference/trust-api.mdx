@@ -132,7 +132,7 @@ Poll again after a backoff (1–2 seconds is fine; the endpoint is rate-limited 
 }
 ```
 
-`binding_id` records that the agent has linked — there is **no bearer token**. Minting at `/v1/token` is keyless: the agent authenticates by signing the mint request with its account key (see below), so its keypair is the only secret it keeps. Bindings are long-lived (90 days by default) and revocable by the human at any time. `binding_token_expires_at` is the Unix timestamp at which the binding expires and the agent must re-link.
+`binding_id` records that the agent has linked — there is **no bearer token**. Minting at `/v1/token` is keyless: the agent authenticates by signing the mint request with its account key (see below), so its keypair is the only secret it keeps. Bindings are long-lived and revocable by the human at any time. The expiry is an inactivity window: the attestor re-arms it on every `/v1/token` mint, so a binding in regular use does not lapse — only one left unused for ~90 days does. `binding_token_expires_at` is the Unix timestamp at which an unused binding would lapse and the agent would have to re-link.
 
 ### Response — 410 Gone
 
@@ -171,9 +171,10 @@ Signature: sig1=:<base64 ed25519 signature>:
 
 ```json
 {
-  "jwt":          "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6Imtf...",
-  "expires_at":   1764086400,
-  "verification": "email"
+  "jwt": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6Imtf...",
+  "expires_at": 1764086400,
+  "verification": "email",
+  "binding_expires_at": 1772020800
 }
 ```
 
@@ -186,6 +187,8 @@ AFAuth-Attestation: <jwt>
 Against an `attested_only` service, omitting this header returns `401 attestation_required`; a malformed or wrong-audience token returns `401 invalid_attestation`. Both are distinct from the trust-attestor errors below, which `trust.afauth.org` itself returns.
 
 `verification` is the strongest method the linked human has on file — emitted for the agent's awareness, identical to the `verification` claim inside the JWT.
+
+`binding_expires_at` is the Unix timestamp at which the binding would lapse if left unused. The attestor re-arms it to ~90 days out on every mint (an inactivity window), so a client that caches the binding's expiry should refresh it from this field on each mint rather than treating the link-time value as a fixed deadline.
 
 ### JWT shape (per [§10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust))
 

@@ -31,8 +31,8 @@ If no identity exists yet, `status` prints a hint to run `afauth init` and exits
 |---|---|
 | `not linked` | No binding on file — `attested_only` services will reject signup. Run [`afauth trust link`](/cli/commands/trust). |
 | `live` | Binding is valid and matches the active key. |
-| `expiring` | Binding is valid but within 48h of expiry — re-link soon. |
-| `expired` | Binding has passed its expiry — re-link. |
+| `expiring` | Binding is idle and within 48h of lapsing — mint once (e.g. `afauth call`) to refresh it, or re-link. |
+| `expired` | Binding lapsed after ~90 days unused — re-link. |
 | `orphaned` | Binding is for a different key (e.g. after a key rotation that left `trust.json` behind) — re-link. |
 
 ## Flags
