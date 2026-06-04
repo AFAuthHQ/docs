@@ -89,6 +89,8 @@ The protocol acknowledges that afauth.org acts as both spec editor and trust att
 
 The trust attestor identifier is reserved; the *operator* is not. Anyone may run an attestor under a different `iss` — `acme-trust`, `enterprise-corp-trust`, etc. — and ask consuming services to list it in `billing.accepted_attestors`. The default `afauth-trust` exists so a service can start enforcing `attested_only` without bootstrapping a new attestor relationship first; it does not displace alternatives.
 
+Operating one is a step-by-step in [Run your own attestor](/guides/run-your-own-attestor); pointing an agent at a non-default attestor is [Use a different attestor](/guides/use-a-different-attestor).
+
 ## Where to next
 
 <CardGroup cols={2}>

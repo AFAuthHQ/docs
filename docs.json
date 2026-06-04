@@ -55,7 +55,8 @@
             "group": "Build an agent",
             "pages": [
               "guides/build-an-agent-cli",
-              "guides/link-to-a-human"
+              "guides/link-to-a-human",
+              "guides/use-a-different-attestor"
             ]
           },
           {
@@ -63,6 +64,7 @@
             "pages": [
               "guides/verify-a-request",
               "guides/accept-afauth-trust",
+              "guides/run-your-own-attestor",
               "guides/keep-attested-access-live",
               "guides/invite-and-claim",
               "guides/revoke-an-account",

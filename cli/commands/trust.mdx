@@ -5,11 +5,14 @@ description: "Bind an agent to a human-controlled account at an afauth-trust att
 
 <Note>Hand-maintained reference. For the authoritative flags on your installed version, run the command with `--help`.</Note>
 
-`afauth trust` manages the agent's binding to a human account at an
-[afauth-trust attestor](/concepts/trust-attestor). The binding lets the agent
-mint short-lived §10 attestation JWTs so it can sign up to services that
-require attestation (`attested_only` mode). Binding state is stored at
-`~/.afauth/trust.json` (chmod 600).
+`afauth trust` manages the agent's binding(s) to a human account at one or more
+[trust attestors](/concepts/trust-attestor). A binding lets the agent mint
+short-lived §10 attestation JWTs so it can sign up to services that require
+attestation (`attested_only` mode). An agent may link to several attestors at
+once; `signup`/`token` pick the one a given service accepts (its
+`billing.accepted_attestors`), or `--attestor` chooses explicitly — see
+[Use a different attestor](/guides/use-a-different-attestor). Binding state is
+stored at `~/.afauth/trust.json` (chmod 600).
 
 ## `afauth trust link`
 
@@ -37,6 +40,8 @@ afauth trust link --base https://trust.example.com --label "Atlas (research agen
 | `--no-loopback` | `false` | Disable the loopback callback shortcut. |
 | `--no-browser` | `false` | Don't auto-open the browser; just print the link. |
 
+<Note>Linking a new base URL **adds** a binding — an agent can hold several attestors at once. Re-linking the same base refreshes it in place. List them with `afauth trust status`.</Note>
+
 ## `afauth trust token <service-did>`
 
 Mint a §10 attestation JWT for a single service, audience-bound to its DID.
@@ -44,16 +49,20 @@ Signs the mint request with the agent key (no bearer token); run `afauth trust l
 
 ```bash
 afauth trust token did:web:api.example.com
+
+# Choose among multiple linked attestors (by issuer or base URL).
+afauth trust token --attestor acme-trust did:web:api.example.com
 ```
 
 | Flag | Default | Notes |
 |---|---|---|
+| `--attestor` | — | Which linked attestor to mint from (issuer or base URL). Default: the only binding (errors if several are linked). |
 | `--key` | `~/.afauth/key.json` | Agent key path (must match the linked binding). |
 | `--timeout` | `30` | Request timeout in seconds. |
 
 ## `afauth trust status`
 
-Show the cached binding (attestor base URL, binding id, expiry).
+List every linked binding (attestor identifier, base URL, binding id, expiry).
 
 ```bash
 afauth trust status
@@ -61,9 +70,15 @@ afauth trust status
 
 ## `afauth trust forget`
 
-Delete the local binding. This does **not** revoke server-side — to revoke the
-binding at the attestor, visit `trust.afauth.org/account`.
+Delete local binding state. By default forgets **all** bindings; pass
+`--attestor` to drop just one. This does **not** revoke server-side — to revoke
+the binding at the attestor, visit `trust.afauth.org/account`.
 
 ```bash
-afauth trust forget
+afauth trust forget                       # forget all bindings
+afauth trust forget --attestor acme-trust # forget just one (issuer or base URL)
 ```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--attestor` | — | Forget only this attestor (issuer or base URL). Default: all bindings. |

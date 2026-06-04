@@ -14,6 +14,9 @@ afauth signup --explicit --terms-version 2026-05-01 https://api.example.com
 
 # Override the auto-mint with an explicit attestation JWT (testing).
 afauth signup --attest "$JWT" https://api.example.com
+
+# Choose which linked attestor to mint from when several could apply.
+afauth signup --attestor acme-trust https://api.example.com
 ```
 
 ## Auto-attestation
@@ -28,8 +31,14 @@ If no binding exists, signup exits non-zero with a prompt to run
 expired, it prompts to re-link. Services in any other mode (`free`,
 `denied`, or unset) skip the attestation step entirely.
 
+When the agent is linked to **multiple** attestors, signup mints from the one
+whose issuer is in the service's `accepted_attestors`; `--attestor <iss-or-url>`
+forces a specific binding. If you're linked only to attestors the service
+doesn't accept, signup fails locally — naming the attestors it *does* accept —
+before sending anything. See [Use a different attestor](/guides/use-a-different-attestor).
+
 ```text
 $ afauth signup https://api.example.com
-attested via trust.afauth.org
+attested via afauth-trust
 signed up to https://api.example.com as did:key:z6Mk… (UNCLAIMED)
 ```

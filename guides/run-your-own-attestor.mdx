@@ -1,0 +1,137 @@
+---
+title: "Run your own attestor"
+description: "Operate a trust-class attestor under your own issuer — for a private agent fleet or as an alternative public attestor — that conformant services and agents recognize."
+---
+
+The `afauth-trust` identifier is reserved, but the **operator role is open**: anyone may run an attestor under a different `iss` (`acme-trust`, `enterprise-corp-trust`, …) and have consuming services list it in [`billing.accepted_attestors`](/concepts/attestation#unclaimed-mode--attested_only). Run one for a private agent fleet (your attestor, your verification policy) or as an alternative public attestor. Consumers verify your tokens **offline** against your JWKS — your uptime bounds token *issuance*, not verification.
+
+<Note>
+The **wire shape** is pinned by [AFAP-0006](https://github.com/AFAuthHQ/spec/blob/main/proposals/0006-afauth-trust-attestor.md) and [§10.3.1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1031-trust-attestor-afauth-trust) — match it exactly or no verifier will accept you. **Operator policy** (which verification methods you offer, abuse handling, rate limits) is entirely yours. Pick an `iss` other than `afauth-trust`.
+</Note>
+
+## The contract you must implement
+
+An agent links once, then mints per-service tokens; a service fetches your JWKS and verifies offline. Concretely, you expose four endpoints (full shapes in the [Trust API reference](/reference/trust-api)):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/link/start` | Agent submits its DID + public key; you return a deep link for a human to confirm, plus a poll URL. |
+| `POST` | `/v1/link/poll` | Agent (signing `req_id`) retrieves its binding once a human confirms. |
+| `POST` | `/v1/token` | Agent (keyless [§5](/concepts/signing) request signature) mints a JWT bound to a `service_did`. |
+| `GET` | `/.well-known/jwks.json` | Public verification keys, so services verify offline. Cache 300s; publish new `kid`s ≥900s before use. |
+
+The token you mint at `/v1/token` MUST have this shape, signed EdDSA with a `kid` present in your JWKS:
+
+```
+header: { alg: "EdDSA", typ: "JWT", kid: "<from your jwks.json>" }
+claims: {
+  iss: "acme-trust",            // YOUR issuer — not afauth-trust
+  aud: "<service_did>",         // the destination service; pins the token to it
+  sub: "<agent_did>",           // the linked agent's did:key
+  sub_h: "<base64url pairwise human pseudonym>",
+  iat: <unix>,
+  exp: <iat + ≤900>,            // ≤ 900 seconds, hard cap
+  verification: "email" | "oauth" | "payment"
+}
+```
+
+Three invariants verifiers depend on — get them wrong and tokens silently fail:
+
+- **`aud` = the destination `service_did`.** A token minted for service A must not verify against service B.
+- **`exp − iat` ≤ 900s.** The revocation window. Services must not cache a single token past `exp`.
+- **`sub_h` carries no PII** and is **pairwise**: stable per `(human, aud)`, unlinkable across services. Derive it as an HMAC of the human principal keyed per service — never the raw email/OAuth subject. Agents are [`did:key` only](/concepts/glossary) (no `did:web`), so `sub` is the agent's `did:key`.
+
+## Stand one up
+
+<Steps>
+
+<Step title="Choose an issuer and a domain">
+
+Pick an `iss` that isn't `afauth-trust` (e.g. `acme-trust`) and the HTTPS origin you'll serve from (e.g. `https://trust.acme.example`). The `iss` string is what services add to `accepted_attestors` and what verifiers match — treat it as stable.
+
+</Step>
+
+<Step title="Deploy the reference attestor (or implement the contract)">
+
+The fastest path is the open-source reference implementation behind `trust.afauth.org`: [**AFAuthHQ/trust**](https://github.com/AFAuthHQ/trust). It ships the four endpoints, keyless-mint verification, pairwise `sub_h` derivation, and `kid` rotation. Deploy it on any container host (it targets Railway/Docker).
+
+It is configured by environment — public origin, advertised JWKS URL, and the keys that protect signing material and derive pseudonyms:
+
+| Variable | Purpose |
+|---|---|
+| `PUBLIC_BASE_URL` | Your public origin, e.g. `https://trust.acme.example`. Agents sign `/v1/token` against this, so it must match. |
+| `JWKS_PUBLIC_URL` | The canonical JWKS URL you advertise. |
+| `TRUST_KEK_BASE64` | AES-256-GCM key-encryption-key protecting signing-key private material. |
+| `TRUST_PSEUDONYM_KEY_BASE64` | HMAC key that derives the pairwise `sub_h`. |
+| `TRUST_ADMIN_SECRET` | Bearer secret for the operator-only key-rotation endpoints. |
+
+The issuer is currently a constant (`export const ISS` in `src/lib/signing.ts`) pinned to `afauth-trust` — fork and set it to your identifier. Everything else above is environment configuration. (If you implement the wire shape from scratch instead, the [Trust API reference](/reference/trust-api) is the normative request/response contract.)
+
+</Step>
+
+<Step title="Get services to accept you">
+
+Verification is offline and per-service — there is no central registry to register with. Ask each consuming service to add your `iss` to its discovery document and point a verifier at your JWKS:
+
+```typescript
+import { JwksAttestor, MultiAttestor, trustAttestor, Server } from "@afauthhq/server";
+
+const server = new Server({
+  // ...
+  attestor: new MultiAttestor([
+    trustAttestor(),                       // keep afauth-trust if they want both
+    new JwksAttestor({
+      iss: "acme-trust",
+      jwksUrl: "https://trust.acme.example/.well-known/jwks.json",
+      algorithms: ["EdDSA"],
+    }),
+  ]),
+  discovery: {
+    // ...
+    billing: { unclaimed_mode: "attested_only", accepted_attestors: ["afauth-trust", "acme-trust"] },
+  },
+});
+```
+
+The service-side walkthrough — discovery declaration, policy, failure modes — is [Accept an attestor](/guides/accept-afauth-trust). Because consumers **pin** the JWKS URLs they trust, your attestor is honored only by services that explicitly list your `iss`.
+
+</Step>
+
+<Step title="Point agents at you">
+
+Agents link to your base URL and mint exactly as they would against the default attestor:
+
+```bash
+afauth trust link --base https://trust.acme.example
+afauth signup https://api.example.com   # picks the acme-trust binding the service accepts
+```
+
+The agent-side details — multiple bindings, selection, the not-accepted error — are in [Use a different attestor](/guides/use-a-different-attestor).
+
+</Step>
+
+</Steps>
+
+## Operational notes
+
+- **Offline verification means your downtime is bounded.** A `/v1/token` outage stops *new* mints; already-issued tokens keep verifying against your published JWKS until their `exp`.
+- **Rotate keys ahead of use.** Publish each new `kid` in your JWKS at least one 900-second window before signing with it, so consumer caches refresh without a verification gap.
+- **Cap mint volume per binding.** A per-binding daily token limit keeps a compromised agent key from acting as an unlimited attestation oracle (the reference attestor does this).
+- **You are the global revocation lever.** When a human revokes a binding, stop minting for that agent immediately; previously-issued tokens still verify until `exp` (≤900s), which is the window you're trading off.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    The normative endpoint, request, and JWT shapes to match.
+  </Card>
+  <Card title="The trust attestor" icon="circle-info" href="/concepts/trust-attestor">
+    The federation model, the `verification` claim, and what an attestation proves.
+  </Card>
+  <Card title="Accept an attestor" icon="badge-check" href="/guides/accept-afauth-trust">
+    The service side — declaring and verifying your `iss`.
+  </Card>
+  <Card title="Use a different attestor" icon="terminal" href="/guides/use-a-different-attestor">
+    The agent side — linking to and minting from your attestor.
+  </Card>
+</CardGroup>

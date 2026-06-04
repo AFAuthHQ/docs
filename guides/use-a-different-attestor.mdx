@@ -1,0 +1,134 @@
+---
+title: "Use a different attestor"
+description: "Link your agent to an attestor other than trust.afauth.org — a private/enterprise attestor or an alternative public one — and have it present the attestation the target service actually accepts."
+---
+
+Which attestor an agent should use is the **service's** call, not the agent's: a service lists the issuers it trusts in its discovery document's [`billing.accepted_attestors`](/concepts/attestation#unclaimed-mode--attested_only). Most services accept [`afauth-trust`](/concepts/trust-attestor), so the default just works. But a service may instead (or also) accept a private enterprise attestor or an alternative public one — and your agent can link to it and present the right token.
+
+<Note>
+You only need this when a target service lists an attestor other than `afauth-trust` — or when you [run your own](/guides/run-your-own-attestor). If every service you use accepts `afauth-trust`, the default [link flow](/guides/link-to-a-human) is all you need.
+</Note>
+
+## How the agent picks an attestor
+
+An agent can hold bindings to **several** attestors at once. When it signs up to a service, it picks the binding whose issuer (`iss`) is in that service's `accepted_attestors`:
+
+- **Exactly one of your bindings matches** → it's used automatically.
+- **Several match** (or the service names none) → you disambiguate with `--attestor`.
+- **None match** → you get a local error naming the attestors the service *does* accept, before any request is sent — so you re-link instead of debugging an opaque server rejection.
+
+That last point is the whole reason to reconcile on the agent side: a token from an unaccepted issuer would just be rejected by the service with a generic `401`. The agent catches it first.
+
+## With the CLI
+
+<Steps>
+
+<Step title="Link to the attestor the service accepts">
+
+Point `afauth trust link` at the attestor's base URL. This **adds** a binding; it doesn't replace an existing one, so you can keep `afauth-trust` and a private attestor side by side.
+
+```bash
+# Link to a different / self-hosted attestor (keeps any existing binding).
+afauth trust link --base https://acme-trust.example --label "atlas on wen-mbp"
+
+# See every attestor this agent is linked to.
+afauth trust status
+```
+
+`afauth trust status` lists each binding with its attestor identifier, base URL, and expiry.
+
+</Step>
+
+<Step title="Sign up — the accepted attestor is chosen for you">
+
+```bash
+afauth signup https://api.example.com
+```
+
+`signup` reads the service's `accepted_attestors` and mints from the binding that matches. If more than one of your bindings qualifies, name the one to use (by issuer or base URL):
+
+```bash
+afauth signup --attestor acme-trust https://api.example.com
+# or: afauth signup --attestor https://acme-trust.example https://api.example.com
+```
+
+The same `--attestor` flag works on `afauth trust token`, and `AFAUTH_TRUST_BASE` selects a binding when no flag is given.
+
+</Step>
+
+<Step title="If you linked to the wrong attestor">
+
+You don't have to guess. If none of your bindings is accepted, `signup` fails locally with the fix:
+
+```text
+this service accepts attestations from [acme-trust], but this agent is linked to [afauth-trust].
+  re-link to an accepted attestor: afauth trust link --base <url>
+```
+
+Re-link against an accepted attestor (or [run your own](/guides/run-your-own-attestor) and ask the service to add it), then retry. Drop a binding you no longer need with `afauth trust forget --attestor <iss-or-url>` (omit the flag to clear all).
+
+</Step>
+
+</Steps>
+
+## With the TypeScript SDK
+
+Point a [`TrustClient`](/sdk/typescript/agent/overview) at the attestor's base URL to mint from it, and pass the service's `accepted_attestors` to [`AttestedFetcher`](/concepts/attestation) so an unaccepted attestor fails locally instead of over the wire:
+
+```typescript
+import {
+  Agent,
+  TrustClient,
+  AttestedFetcher,
+  AttestorNotAcceptedError,
+  fetchDiscovery,
+} from "@afauthhq/agent";
+
+const agent = await Agent.generate(); // or load your persisted identity
+
+// Mint from a non-default attestor — the binding came from this attestor's link flow.
+const trust = new TrustClient({
+  baseUrl: "https://acme-trust.example",
+  agentDid: agent.did,
+  agentPublicKey: agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+  binding, // persisted from linkStart()/linkPoll()
+});
+
+// Reconcile against what the service accepts, read from its discovery doc.
+const discovery = await fetchDiscovery("https://api.example.com");
+const fetcher = new AttestedFetcher({
+  agent,
+  trust,
+  serviceDid: discovery.service_did,
+  acceptedAttestors: discovery.billing?.accepted_attestors,
+});
+
+try {
+  const res = await fetcher.fetch({ method: "GET", url: "https://api.example.com/thing" });
+} catch (e) {
+  if (e instanceof AttestorNotAcceptedError) {
+    // e.issuer (what you're linked to) isn't in e.accepted (what the service takes).
+    console.error(e.message); // link to an accepted attestor and retry
+  }
+}
+```
+
+Minted tokens expose `iss` (`TrustToken.iss`); `attestationIssuer(jwt)` and `assertAttestorAccepted(token, accepted)` are exported if you want to reconcile outside `AttestedFetcher`. Omit `acceptedAttestors` to skip the check.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Run your own attestor" icon="server" href="/guides/run-your-own-attestor">
+    Operate an attestor under your own `iss` for a fleet or as a public alternative.
+  </Card>
+  <Card title="The trust attestor" icon="circle-info" href="/concepts/trust-attestor">
+    What `afauth-trust` is, and the federation model that allows alternatives.
+  </Card>
+  <Card title="Accept an attestor (service side)" icon="badge-check" href="/guides/accept-afauth-trust">
+    The other half: declaring which attestors your service trusts.
+  </Card>
+  <Card title="afauth trust" icon="terminal" href="/cli/commands/trust">
+    `link --base`, `status`, `token --attestor`, `forget --attestor`.
+  </Card>
+</CardGroup>
