@@ -103,7 +103,7 @@ assertFreshOwnerSession(session, { maxAgeSeconds: 120 });
 | `INVITED` | `CLAIMED` | human authenticates as the recipient |
 | `INVITED` | `UNCLAIMED` | invitation TTL expires with no replacement |
 
-A newer invitation **atomically supersedes** a pending one (§7.3) — there's never more than one live invitation per account. Claiming is always optional; an account can run `UNCLAIMED` until `unclaimed_ttl_seconds` elapses.
+A newer invitation **atomically supersedes** a pending one (§7.3) — there's never more than one live invitation per account. Claiming is always optional; by default an account runs `UNCLAIMED` indefinitely — only a service that opts into an `unclaimed_ttl_seconds` limit (§4.4) ever expires it.
 
 ## Where to next
 

@@ -42,7 +42,7 @@ Short definitions for the vocabulary used across these docs. Each links to the p
 - **Two-step verify** — The ceremony's two independent authentications — the agent's signature and the human's authentication — that together enforce the invariant. → [The ceremony](/concepts/ceremony)
 - **Match relation** — The rule a service applies at claim time to confirm the human's authenticated identity equals the staged recipient before transitioning to `CLAIMED`. → [The ceremony](/concepts/ceremony)
 - **Recipient** — The identity an agent stages in an invitation. The spec defines `email`, `phone`, `oidc`, and `did`; the v0.1 reference SDK ships only the `email` handler. → [Invite and claim](/guides/invite-and-claim)
-- **Account states** — `UNCLAIMED` (created, no owner) → `INVITED` (invitation pending) → `CLAIMED` (owned); plus `EXPIRED` (unclaimed past TTL) and `ARCHIVED` (owner-deleted). → [The ceremony](/concepts/ceremony)
+- **Account states** — `UNCLAIMED` (created, no owner) → `INVITED` (invitation pending) → `CLAIMED` (owned); plus `EXPIRED` (only on services that opt into an `unclaimed_ttl_seconds`; absent by default) and `ARCHIVED` (owner-deleted). → [The ceremony](/concepts/ceremony)
 - **Owner-binding operation** — A change to which credentials can authenticate as the owner; requires a *freshly* authenticated owner session (60–300 s), never the agent key alone. → [Invite and claim](/guides/invite-and-claim)
 
 ## Operations

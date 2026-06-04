@@ -89,7 +89,7 @@ defineService({
   discovery: {
     endpoints: { accounts: "/afauth/v1/accounts", /* ...other paths */ },
     billing: { accepted_attestors: ["afauth-trust", "stripe-projects"] },
-    limits: { unclaimed_ttl_seconds: 3600 },
+    limits: { unclaimed_rate_limit_per_hour: 100 },
   },
 });
 ```

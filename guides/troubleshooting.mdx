@@ -45,7 +45,7 @@ A common `invalid_attestation` cause is an `aud` mismatch: the agent minted for 
 | Code | Status | Cause | Fix |
 |---|---|---|---|
 | `unknown_account` | 404 | The account doesn't exist and the service requires **explicit** signup (implicit disabled, §6.4) | Call the explicit signup endpoint (`afauth signup --explicit`) first |
-| `account_expired` | 410 | The account passed `unclaimed_ttl_seconds` without being claimed | It's gone — create a fresh one, and claim sooner next time |
+| `account_expired` | 410 | The account hit a service-set `unclaimed_ttl_seconds` without being claimed — only services that opt into a TTL produce this; most never do | It's gone — create a fresh one. Default services never expire accounts. |
 
 ## Rate limited (429)
 
