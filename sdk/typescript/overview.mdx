@@ -1,13 +1,56 @@
 ---
 title: "TypeScript SDK"
-description: "Reference TypeScript SDK for the AFAuth Protocol — four packages under @afauthhq."
+description: "Reference TypeScript SDK for the AFAuth Protocol — four composable packages under @afauthhq."
 ---
 
-<Note>Stub — overview of the four packages and how they compose.</Note>
+The reference AFAuth implementation in TypeScript is four small packages. You install only the side you're building: `@afauthhq/agent` for an agent, `@afauthhq/server` for a service (plus `@afauthhq/worker` on Cloudflare). `@afauthhq/core` is the shared foundation both sides pull in.
 
-| Package | Purpose |
-|---|---|
-| [`@afauthhq/core`](/sdk/typescript/core/overview) | Shared primitives: `did:key`, RFC 9421, recipient types, error envelope. |
-| [`@afauthhq/agent`](/sdk/typescript/agent/overview) | Client side: `Agent.generate()`, `signRequest`, protocol builders. |
-| [`@afauthhq/server`](/sdk/typescript/server/overview) | Service side: `defineService` (spam-resistant defaults), `Verifier`, `Server`, resolvers, rate limiter, attestor. |
-| [`@afauthhq/worker`](/sdk/typescript/worker/overview) | Cloudflare Workers bindings: `createWorker`, KV/D1 stores. |
+See [Installation](/sdk/typescript/installation) for setup, or jump to a quickstart: [build an agent](/quickstart-agent) or [accept AFAuth on your service](/quickstart-service).
+
+## The four packages
+
+| Package | You're building | Key surface |
+|---|---|---|
+| [`@afauthhq/agent`](/sdk/typescript/agent/overview) | An agent | `Agent.generate()`, `signRequest`, the protocol builders, `TrustClient`, `AttestedFetcher` |
+| [`@afauthhq/server`](/sdk/typescript/server/overview) | A service | `defineService`, `Server`, `Verifier`, the attestors, `RateLimiter`, the §10.7 attested-session gate |
+| [`@afauthhq/worker`](/sdk/typescript/worker/overview) | A service on Cloudflare | `createWorker` + durable KV / D1 / Durable Object stores |
+| [`@afauthhq/core`](/sdk/typescript/core/overview) | (shared) | `did:key` codec, RFC 9421 canonicalisation, recipient types, `AFAuthError` |
+
+## How they compose
+
+```
+  Building an agent          Operating a service
+  ─────────────────          ───────────────────
+  @afauthhq/agent            @afauthhq/server
+        │                    (+ @afauthhq/worker on Cloudflare)
+        │                           │
+        └────────────┬──────────────┘
+                     ▼
+               @afauthhq/core
+        (shared primitives — usually transitive)
+```
+
+- **Building an agent?** Install `@afauthhq/agent` — or skip code entirely and use the [`afauth` CLI](/cli/overview).
+- **Operating a service?** Install `@afauthhq/server`. On Cloudflare Workers, add `@afauthhq/worker` for `createWorker` and the durable stores.
+- **`@afauthhq/core`** comes along transitively — you rarely import it directly, except for shared types like `AFAuthError` and `Recipient`.
+
+<Note>
+These overview pages map the surface; per-symbol typedoc reference is planned but not yet published. The [quickstarts](/quickstart-agent) and [guides](/guides/verify-a-request) carry runnable, copyable code for the common paths.
+</Note>
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart: build an agent" icon="robot" href="/quickstart-agent">
+    `@afauthhq/agent` end to end in five minutes.
+  </Card>
+  <Card title="Quickstart: accept AFAuth" icon="server" href="/quickstart-service">
+    `@afauthhq/server` with spam-resistant defaults.
+  </Card>
+  <Card title="Installation" icon="download" href="/sdk/typescript/installation">
+    npm / pnpm / yarn, Node 20+.
+  </Card>
+  <Card title="Use the CLI instead" icon="terminal" href="/cli/overview">
+    The same agent flow with no code.
+  </Card>
+</CardGroup>

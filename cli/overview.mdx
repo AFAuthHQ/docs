@@ -3,13 +3,77 @@ title: "afauth CLI"
 description: "Reference command-line agent runtime — single static binary, no SDK required."
 ---
 
-<Note>Stub — what the CLI is, when to reach for it instead of the SDK.</Note>
+`afauth` is the reference AFAuth agent as a single static Go binary. It does everything the [TypeScript SDK](/sdk/typescript/overview) does on the agent side — generate a key, link to a human, sign up, make signed requests, invite an owner — with no code to write. Reach for it to try AFAuth from a terminal, script a service from a shell or CI job, or run an agent from a stack that isn't JavaScript.
+
+For a step-by-step walkthrough see [Build an agent (CLI)](/guides/build-an-agent-cli); to get the binary see [Install](/cli/install).
+
+## The shape of it
 
 ```bash
-afauth init                         # 1. generate the agent's did:key identity
-afauth trust link                   # 2. link to a human at trust.afauth.org (one-time)
-afauth signup https://api.example.com   # 3. sign up — auto-mints an attestation when the service requires one
-afauth call https://api.example.com/afauth/v1/accounts/me   # 4. signed requests thereafter
+afauth init                                               # 1. generate the agent's did:key identity
+afauth trust link                                         # 2. link to a human (one-time, ~90 days)
+afauth signup https://api.example.com                     # 3. sign up — auto-mints an attestation if required
+afauth call https://api.example.com/afauth/v1/accounts/me # 4. signed requests thereafter
 ```
 
-Most services run in `attested_only` mode, so you link to a human **once** with [`afauth trust link`](/cli/commands/trust); after that, `afauth signup` mints a short-lived attestation per service automatically. See [Install](/cli/install) to get the binary.
+Most services run `attested_only`, so you link to a human **once**; after that, `afauth signup` and `afauth call` mint short-lived per-service attestations for you.
+
+## Commands
+
+### Identity & keys
+
+| Command | What it does | Reference |
+|---|---|---|
+| `afauth init` | Generate a keypair → `~/.afauth/key.json` | [init](/cli/commands/init) |
+| `afauth whoami` | Print the agent's `did:key` | [whoami](/cli/commands/whoami) |
+| `afauth status` | Local summary of identity, link, and accounts (no network) | [status](/cli/commands/status) |
+| `afauth keys` | Rotate (pre-claim), export, or import the keypair | [keys](/cli/commands/keys) |
+
+### Link to a human
+
+| Command | What it does | Reference |
+|---|---|---|
+| `afauth trust link` | Bind the agent to a human at the trust attestor | [trust](/cli/commands/trust) |
+| `afauth trust token <service-did>` | Mint a per-service attestation JWT | [trust](/cli/commands/trust) |
+| `afauth trust status` / `forget` | Show or delete the local binding | [trust](/cli/commands/trust) |
+
+### Interact with a service
+
+| Command | What it does | Reference |
+|---|---|---|
+| `afauth discover <url>` | Fetch and validate a service's `/.well-known/afauth` | [discover](/cli/commands/discover) |
+| `afauth signup <url>` | Sign up (implicit, or `--explicit`); auto-mints attestation if required | [signup](/cli/commands/signup) |
+| `afauth call <url>` | Make signed requests (`--method`, `--data`, `--header`) | [call](/cli/commands/call) |
+| `afauth accounts` | List or show per-service account state | [accounts](/cli/commands/accounts) |
+
+### Hand off ownership
+
+| Command | What it does | Reference |
+|---|---|---|
+| `afauth invite <recipient> --service <url>` | Stage an owner invitation (`email` / `phone` / `oidc` / `did`) | [invite](/cli/commands/invite) |
+
+## Where state lives
+
+The CLI keeps everything under `~/.afauth/` (overridable with `$AFAUTH_HOME`):
+
+- `key.json` — the agent's keypair, the sole credential for pre-claim operations. Back it up with `afauth keys export`.
+- `trust.json` — the human-link binding (chmod 600).
+
+Every command takes `--help` for the authoritative flags on your installed version.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Build an agent (CLI)" icon="terminal" href="/guides/build-an-agent-cli">
+    The end-to-end walkthrough.
+  </Card>
+  <Card title="Install" icon="download" href="/cli/install">
+    Homebrew, install script, or `go install`.
+  </Card>
+  <Card title="Link your agent to a human" icon="user-check" href="/guides/link-to-a-human">
+    The trust-attestor flow in depth.
+  </Card>
+  <Card title="Build with the SDK instead" icon="code" href="/sdk/typescript/overview">
+    `@afauthhq/agent` for embedding in a TypeScript app.
+  </Card>
+</CardGroup>
