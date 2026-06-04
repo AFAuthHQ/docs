@@ -9,6 +9,10 @@ Most AFAuth services declare `unclaimed_mode = "attested_only"` — it's the [`d
 This is a core step of the default agent journey: the standard AFAuth service ships `unclaimed_mode = "attested_only"`, so your agent must link to a human before it can sign up. You can skip linking **only** when the target service advertises `unclaimed_mode = "free"` — then your signed request alone suffices.
 </Note>
 
+<Tip>
+Just want your **Claude Code / Codex** agent to use AFAuth, no code required? [Use AFAuth with Claude Code & Codex](/equip-your-agent) is the no-code on-ramp — `afauth trust link` does everything on this page in one command.
+</Tip>
+
 ## How it works
 
 The agent never authenticates the human — the trust attestor does. The flow is a three-leg handoff:
