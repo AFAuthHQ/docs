@@ -9,7 +9,7 @@ Short definitions for the vocabulary used across these docs. Each links to the p
 
 - **`did:key`** — A [W3C DID](https://www.w3.org/TR/did-core/) that encodes an Ed25519 public key directly in the identifier (multicodec `0xed01` + the 32-byte key), so the identifier *is* the key and signatures verify offline — no registry, no DNS. The only agent-account method in v0.1. → [Identity and keys](/concepts/identity-and-keys)
 - **`agent_did`** — An agent's `did:key`, used as the signing `keyid` on every request and the `sub` of its attestations. It changes when the key rotates. → [Identity and keys](/concepts/identity-and-keys)
-- **`account_id`** — A service-local, opaque account identifier, distinct from any key and **stable across key rotation**, so one account can hold several agent credentials. → [How it works](/concepts/how-it-works)
+- **`account_id`** — A service-local, opaque account identifier, distinct from any key and **stable across key rotation**, so one account can hold several agent credentials. → [How it works](/how-it-works)
 - **`service_did`** — The service's own DID, declared in its discovery document (typically `did:web`, since services have stable hosts) and used as the `aud` an attestation is bound to. → [Identity and keys](/concepts/identity-and-keys)
 - **`did:web`** — A DNS-anchored DID method. **Not** an agent identity in AFAuth (agents have no stable web origin); used only for a service's `service_did` and for `did`-type owner recipients. → [Identity and keys](/concepts/identity-and-keys)
 
@@ -54,7 +54,7 @@ Short definitions for the vocabulary used across these docs. Each links to the p
 ## Where to next
 
 <CardGroup cols={2}>
-  <Card title="How it works, end to end" icon="map" href="/concepts/how-it-works">
+  <Card title="How it works, end to end" icon="map" href="/how-it-works">
     See the terms in motion.
   </Card>
   <Card title="Security model" icon="shield-halved" href="/concepts/security-model">
