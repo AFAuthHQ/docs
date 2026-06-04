@@ -4,15 +4,22 @@ on:
   # Event-driven: triggered by AFAuthHQ/spec via repository_dispatch
   repository_dispatch:
     types: [spec-updated]
-  # Belt-and-suspenders: nightly fallback if a dispatch is lost
+  # Reconcile loop — the real convergence guarantee if a dispatch is lost.
+  # Frequent is cheap: the sync is a no-op when there's no diff.
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "17 */4 * * *"
   # Manual override
   workflow_dispatch:
+
+# Serialize: a cron run and a dispatch run must not race on the sync/spec branch.
+concurrency:
+  group: spec-sync
+  cancel-in-progress: false
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   sync:
@@ -75,3 +82,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"
+
+      # Make failure visible: a stale-docs symptom otherwise goes unnoticed.
+      # Idempotent — one open issue, commented on repeat failures (no spam).
+      - name: Surface failure as an issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = "sync-broken";
+            const { owner, repo } = context.repo;
+            const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = `Spec → docs sync run failed — \`docs/spec/*.mdx\` may be stale.\n\n${url}`;
+            const open = await github.rest.issues.listForRepo({
+              owner, repo, state: "open", labels: label, per_page: 1,
+            });
+            if (open.data.length) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: open.data[0].number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title: "Spec → docs sync is failing", body, labels: [label] });
+            }
