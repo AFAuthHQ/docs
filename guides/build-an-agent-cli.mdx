@@ -3,4 +3,143 @@ title: "Build an agent (CLI)"
 description: "Use the afauth CLI as your agent runtime — single static binary, no SDK required."
 ---
 
-<Note>Stub — `afauth init`, `afauth discover`, `afauth signup`, then `afauth call` for ongoing requests.</Note>
+The `afauth` CLI is a complete agent runtime. It generates a key, links to a human, signs up, and makes signed requests — the same protocol the [TypeScript SDK](/quickstart-agent) speaks, with no code to write. Reach for it to try AFAuth from a terminal, drive a service from a shell script or CI job, or run an agent from a stack that isn't JavaScript.
+
+<Note>
+Building inside a TypeScript app instead? Use [`@afauthhq/agent`](/quickstart-agent) — the same flow as objects (`Agent`, `TrustClient`) you can hold and persist. The CLI and the SDK are interchangeable on the wire; pick whichever fits your runtime.
+</Note>
+
+## Install
+
+import InstallCli from "/snippets/install-cli.mdx";
+
+<InstallCli />
+
+## The agent journey
+
+<Steps>
+
+<Step title="Create an identity">
+
+```bash
+afauth init
+```
+
+Generates an Ed25519 keypair and writes it to `~/.afauth/key.json`. The `did:key` derived from the public half *is* your agent's identity — no registration, no DNS.
+
+```bash
+afauth whoami        # did:key:z6Mk...
+```
+
+That private key is the sole credential for everything the agent does before an account is claimed. Treat it like an API key: back it up (`afauth keys export`), never commit it.
+
+</Step>
+
+<Step title="Link to a human">
+
+Most services ship `unclaimed_mode = "attested_only"` (the [`defineService`](/sdk/typescript/server/overview) default), so they reject an un-attested signup. Link once to a human at the trust attestor — the binding lasts ~90 days, and every agent of that human shares it:
+
+```bash
+afauth trust link
+```
+
+This opens a browser for the human to confirm, then stores the binding at `~/.afauth/trust.json` (chmod 600). The full flow, headless mode (`--no-loopback`), and recovery are in [Link your agent to a human](/guides/link-to-a-human).
+
+<Tip>
+Signing up to a `unclaimed_mode = "free"` service? Skip this step — a bare signed request is enough.
+</Tip>
+
+</Step>
+
+<Step title="Sign up">
+
+```bash
+afauth signup https://api.example.com
+```
+
+```text
+attested via trust.afauth.org
+signed up to https://api.example.com as did:key:z6Mk… (UNCLAIMED)
+```
+
+The first signed request from an unknown DID *implicitly* creates the account ([§6.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#63-implicit-signup)) — there's no separate create call. If the service requires attestation, `afauth signup` mints one from your binding automatically; you don't pass it by hand. Use `--explicit` to POST an explicit signup with a `--terms-version`, or `--attest "$JWT"` to supply a token yourself.
+
+</Step>
+
+<Step title="Make signed requests">
+
+Every ongoing request is just signed — the agent is a first-class principal from request one:
+
+```bash
+afauth call https://api.example.com/afauth/v1/accounts/me
+afauth call --method POST --data '{"query":"hello"}' https://api.example.com/v1/search
+afauth call --method POST --data @body.json --header 'X-Trace: abc' https://api.example.com/v1/jobs
+```
+
+Against an `attested_only` service, `afauth call` runs the [§10.7 refresh-on-challenge loop](/guides/keep-attested-access-live) for you: on `401 attestation_required` it mints a fresh attestation and retries once. Add `--show-headers` to inspect the signed request.
+
+</Step>
+
+<Step title="Invite a human to claim (optional)">
+
+When you want a person to own the account, stage an invitation. Ownership commits only after they authenticate from the invited address:
+
+```bash
+afauth invite alice@example.com --service https://api.example.com
+```
+
+The agent keeps operating the account afterwards — only owner-binding operations become the human's. See [Invite and claim](/guides/invite-and-claim) for the full ceremony and the other recipient types (`phone`, `oidc`, `did`).
+
+</Step>
+
+</Steps>
+
+## Check your state
+
+`afauth status` reads your local files — no network calls — and summarizes identity, link, and accounts:
+
+```bash
+afauth status
+```
+
+```text
+DID        did:key:z6Mk...
+Key file   ~/.afauth/key.json
+Algorithm  ed25519
+Created    2026-05-20T12:00:00Z
+Link       ✓ trust.afauth.org · live, expires in 88d (email)
+Accounts   2 services — 1 UNCLAIMED, 1 CLAIMED   → afauth accounts list
+```
+
+`afauth accounts list` (add `--refresh` to re-introspect each service) shows per-service account state; `afauth trust status` shows the binding on its own.
+
+## Manage keys
+
+```bash
+afauth keys rotate --service https://api.example.com   # pre-claim self-rotation (§8.1)
+afauth keys export --out backup.json                   # back up the keypair
+afauth keys import backup.json                          # restore on another machine
+```
+
+Rotation changes your `did:key` — the key *is* the identity. Pre-claim, the old key signs the rotation; claimed accounts re-key through the owner. See [Rotate keys](/guides/rotate-keys) and [Recover a compromised key](/guides/recover-a-compromised-key).
+
+<Note>
+Every command takes `--help` for the authoritative flag list on your installed version; the per-command pages under [CLI reference](/cli/overview) document each one. Your files live at `~/.afauth/key.json` (identity) and `~/.afauth/trust.json` (binding), overridable with `$AFAUTH_HOME`.
+</Note>
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Link your agent to a human" icon="user-check" href="/guides/link-to-a-human">
+    The full trust-attestor flow, headless mode, and recovery.
+  </Card>
+  <Card title="Invite and claim" icon="handshake" href="/guides/invite-and-claim">
+    Hand ownership of an account to a human.
+  </Card>
+  <Card title="Build with the SDK instead" icon="code" href="/quickstart-agent">
+    The same journey as `@afauthhq/agent` in TypeScript.
+  </Card>
+  <Card title="CLI command reference" icon="terminal" href="/cli/overview">
+    Every command, flag, and output.
+  </Card>
+</CardGroup>

@@ -3,4 +3,97 @@ title: "Rate limiting"
 description: "Per-route limits and the §11.3 rate_limit_exceeded response."
 ---
 
-<Note>Stub — `RateLimiter`, `MemoryRateLimiter`, `KvRateLimiter`, `Retry-After` header.</Note>
+AFAuth reserves `rate_limit_exceeded` (`429`) in [§11.3](/reference/error-codes) but takes no position on policy — you choose the limits and the backend. The `Server` enforces **per-route** limits when you give it a `RateLimiter` and a per-route config; everything beyond the protocol routes — your app's abuse and quota controls — is yours to layer on top.
+
+## Turn on per-route limits
+
+Supply a `rateLimiter` and a `rateLimits` map. Each named route enforces its own limit; routes you omit aren't limited.
+
+```typescript
+import { defineService, MemoryRateLimiter } from "@afauthhq/server";
+
+const server = defineService({
+  // ...baseUrl, serviceDid, stores, recipients...
+  rateLimiter: new MemoryRateLimiter(),
+  rateLimits: {
+    accounts:              { limit: 5,  windowSeconds: 3600 },  // §6.4 explicit signup
+    account_introspection: { limit: 60, windowSeconds: 60 },
+    owner_invitation:      { limit: 3,  windowSeconds: 3600 },
+    key_rotation:          { limit: 5,  windowSeconds: 86400 },
+  },
+});
+```
+
+The bucket key is `` `${route}:${agentDid}` `` — **per route, per agent DID** (the signing `keyid`). Claim completion is keyed by token; the owner-gated key operations are keyed by owner `userId`, since those are owner-authenticated rather than agent-signed. An exhausted bucket returns `429 rate_limit_exceeded` with a `Retry-After` header.
+
+## Choose a backend
+
+`RateLimiter` is a one-method interface, so you can back it with anything:
+
+```typescript
+interface RateLimiter {
+  take(key: string, config: RateLimitConfig): Promise<RateLimitDecision>;
+}
+// RateLimitConfig:   { limit: number; windowSeconds: number }
+// RateLimitDecision: { ok: boolean; retryAfter?: number; remaining?: number; resetAt?: number }
+```
+
+| Implementation | Backend | Use for |
+|---|---|---|
+| `MemoryRateLimiter` (`@afauthhq/server`) | in-process map | tests, single-instance services |
+| `KvRateLimiter` (`@afauthhq/worker`) | Workers KV, fixed-window | Cloudflare deployments |
+| *your own* | Redis token bucket, Durable Object, Cloudflare Rate Limiting | horizontally-scaled production |
+
+Implementations MAY over-count under racing instances (fail-safe) but MUST NOT under-count. On Cloudflare:
+
+```typescript
+import { KvRateLimiter } from "@afauthhq/worker";
+
+const server = defineService({
+  // ...
+  rateLimiter: new KvRateLimiter(env.AFAUTH_RATELIMIT),
+  rateLimits: { account_introspection: { limit: 60, windowSeconds: 60 } },
+});
+```
+
+## Limit the human, not just the key
+
+Per-DID limits don't stop a Sybil: an attacker spins up fresh keypairs, each with its own bucket. The defense is to bucket on the **account**, which groups all of a human's agents.
+
+A default (`attested_only`) service attaches every agent carrying the same per-service human pseudonym `sub_h` onto **one `account_id`** ([§10.4.4](/concepts/attestation)) — so a human's whole fleet shares one quota no matter how many keys they spin up. For application-level quotas, bans, and abuse counters, key on `account_id` (resolve it with `accounts.getByAgentDid(did)`), not on the agent DID:
+
+```typescript
+const account = await accounts.getByAgentDid(verified.agentDid);
+await myQuota.take(`search:${account.accountId}`, { limit: 1000, windowSeconds: 86400 });
+```
+
+## Client side — honor `Retry-After`
+
+A well-behaved agent backs off on `429` instead of hammering:
+
+```typescript
+case "rate_limit_exceeded": {
+  const retryAfter = Number(res.headers.get("retry-after") ?? 1);
+  await sleep(retryAfter * 1000);
+  return retry();
+}
+```
+
+A `429 rate_limited` from the **trust attestor** (minting attestations too fast) is distinct from a service `429` and from a revocation — back off, don't re-link. See [Keep attested access live](/guides/keep-attested-access-live).
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Attestation & sub_h" icon="users" href="/concepts/attestation">
+    How a human's fleet groups onto one account.
+  </Card>
+  <Card title="Error codes" icon="triangle-exclamation" href="/reference/error-codes">
+    `rate_limit_exceeded` and the rest.
+  </Card>
+  <Card title="Deploy to Cloudflare Workers" icon="cloud" href="/guides/deploy-cloudflare-worker">
+    `KvRateLimiter` and the durable stores.
+  </Card>
+  <Card title="Verify a request" icon="signature" href="/guides/verify-a-request">
+    Authenticate before you meter.
+  </Card>
+</CardGroup>

@@ -3,4 +3,159 @@ title: "Deploy to Cloudflare Workers"
 description: "Run an AFAuth service on Cloudflare Workers with @afauthhq/worker."
 ---
 
-<Note>Stub — `createWorker`, `KvNonceStore`, `KvRevocationList`, `D1AccountStore` migration, example Worker repo.</Note>
+`@afauthhq/worker` wires `@afauthhq/server` into a deployable Cloudflare Worker. `createWorker` routes the five AFAuth endpoints (discovery, owner-invitation, claim-completion, key-rotation, account-introspection) to the matching handlers, and the package ships Cloudflare-native durable stores so nothing critical lives in process memory.
+
+## The Worker
+
+`createWorker(opts)` takes everything `Server` does, plus an `extractOwnerSession` — the one place the Worker needs your auth, because claim completion and the owner-gated key endpoints depend on a human-authenticated session, not the agent signature. It returns a standard `ExportedHandler`.
+
+```typescript
+import {
+  consoleEmailHandler,
+  MemoryAccountStore,
+  MemoryNonceStore,
+  MemoryRevocationList,
+  type OwnerSession,
+} from "@afauthhq/server";
+import {
+  createNonceDurableObject,
+  createWorker,
+  D1AccountStore,
+  DurableObjectNonceStore,
+  KvRevocationList,
+} from "@afauthhq/worker";
+
+// Export the §5.6 nonce Durable Object so wrangler can register it.
+export class AFAuthNonceDO extends createNonceDurableObject() {}
+
+interface Env {
+  AFAUTH_NONCE_DO?: DurableObjectNamespace; // preferred: atomic nonce store
+  AFAUTH_ACCOUNTS?: D1Database;             // durable, multi-agent accounts
+  AFAUTH_REVOCATIONS?: KVNamespace;
+  SERVICE_DID?: string;
+  BASE_URL?: string;
+}
+
+const worker: ExportedHandler<Env> = {
+  fetch(req, env, ctx) {
+    const serviceDid = env.SERVICE_DID ?? "did:web:example.com";
+    const handler = createWorker({
+      serviceDid,
+      baseUrl: env.BASE_URL ?? "https://example.com",
+      // Prefer durable; fall back to memory for local dev only.
+      nonceStore: env.AFAUTH_NONCE_DO
+        ? new DurableObjectNonceStore(env.AFAUTH_NONCE_DO)
+        : new MemoryNonceStore(),
+      accounts: env.AFAUTH_ACCOUNTS
+        ? new D1AccountStore(env.AFAUTH_ACCOUNTS)
+        : new MemoryAccountStore(),
+      revocationList: env.AFAUTH_REVOCATIONS
+        ? new KvRevocationList(env.AFAUTH_REVOCATIONS)
+        : new MemoryRevocationList(),
+      recipients: { email: consoleEmailHandler },
+      discovery: { /* afauth_version, service_did, endpoints, ... */ },
+      // Return null to reject claim / owner-key ops with 401. Replace
+      // with real session verification (signed cookie, IdP JWT).
+      extractOwnerSession: async (_req): Promise<OwnerSession | null> => null,
+    });
+    return handler.fetch!(req, env, ctx);
+  },
+};
+
+export default worker;
+```
+
+This mirrors [`examples/worker/src/index.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts), the full reference Worker.
+
+## Pick durable stores
+
+Memory stores lose every account, nonce, and revocation on isolate recycle — fine for a demo, never for production. Each has a Cloudflare-native backing:
+
+| Store | Memory (dev) | Durable (production) | Notes |
+|---|---|---|---|
+| Nonce (§5.6) | `MemoryNonceStore` | `DurableObjectNonceStore`, then `KvNonceStore` | DO gives atomic check-and-set; KV is eventually consistent |
+| Accounts (§6) | `MemoryAccountStore` | `D1AccountStore` | groups a human's agents by `(iss, sub_h)` |
+| Revocation (§8.3) | `MemoryRevocationList` | `KvRevocationList` | durable; survives recycles |
+| Attested session (§10.7) | `MemoryAttestedFreshnessStore` | `KvAttestedFreshnessStore` | self-evicts on window lapse |
+
+<Warning>
+The nonce store is the one to get right. §5.6 requires atomic, cross-instance check-and-set. `DurableObjectNonceStore` provides it; `KvNonceStore` does a `get`-then-`put` that two racing edge isolates can both win, admitting a narrow replay within the signature's `expires` window. Use the Durable Object for anything with value behind the signature; reserve `KvNonceStore` for low-value or single-region deployments.
+</Warning>
+
+## Configure and deploy
+
+<Steps>
+
+<Step title="Declare bindings in wrangler.toml">
+
+```toml
+name = "afauth-service"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+[[durable_objects.bindings]]
+name       = "AFAUTH_NONCE_DO"
+class_name = "AFAuthNonceDO"
+
+[[migrations]]
+tag         = "v1"
+new_classes = ["AFAuthNonceDO"]
+
+# KV for the revocation list — create with:
+#   wrangler kv namespace create AFAUTH_REVOCATIONS
+[[kv_namespaces]]
+binding = "AFAUTH_REVOCATIONS"
+id      = "paste-the-namespace-id"
+
+[vars]
+SERVICE_DID = "did:web:api.example.com"
+BASE_URL    = "https://api.example.com"
+```
+
+</Step>
+
+<Step title="Apply the D1 migration">
+
+`D1AccountStore` needs its schema. Create the database, bind it, and apply the shipped migration:
+
+```bash
+wrangler d1 create afauth
+wrangler d1 migrations apply afauth
+```
+
+`0001_init.sql` creates the accounts / agents / invitations tables with the `(iss, sub_h)` UNIQUE index that makes multi-agent grouping atomic across isolates.
+
+</Step>
+
+<Step title="Deploy and verify">
+
+```bash
+wrangler deploy
+curl https://api.example.com/.well-known/afauth     # should return your discovery doc
+wrangler tail                                       # watch live logs — magic links, warnings
+```
+
+</Step>
+
+</Steps>
+
+## Replace the demo session extractor
+
+The reference Worker has an `AFAUTH_DEV_TRUST_HEADER` escape hatch that trusts an `X-Owner-Session` header for local testing. It's trivially forgeable — **never set it in production**. Your real `extractOwnerSession` verifies an authenticated session from your claim page (signed cookie, IdP-issued JWT) and returns an `OwnerSession`, or `null` to fail closed with `401 owner_authentication_required`.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Accept AFAuth on your service" icon="server" href="/quickstart-service">
+    The service walkthrough this deploys.
+  </Card>
+  <Card title="Keep attested access live" icon="arrows-rotate" href="/guides/keep-attested-access-live">
+    `KvAttestedFreshnessStore` for §10.7 sessions.
+  </Card>
+  <Card title="Rate limiting" icon="gauge-high" href="/guides/rate-limiting">
+    Add `KvRateLimiter` to the same Worker.
+  </Card>
+  <Card title="Reference Worker" icon="github" href="https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/worker/src/index.ts">
+    The complete, deployable example.
+  </Card>
+</CardGroup>

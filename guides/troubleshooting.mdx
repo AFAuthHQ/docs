@@ -1,0 +1,75 @@
+---
+title: "Troubleshooting"
+description: "The errors you'll actually hit — clock skew, attestation_required, revocation that didn't propagate — with the cause and the fix."
+---
+
+Every AFAuth failure returns a stable `code` in an [error envelope](/concepts/error-envelope). Program against the `code`, not the HTTP status — and find yours below.
+
+## Signature rejected (401)
+
+| Code | Cause | Fix |
+|---|---|---|
+| `invalid_signature` | Bad signature, key resolution failed, or `Content-Digest` ≠ the body bytes | Sign and send the *exact* body bytes; don't let your transport re-serialize JSON after signing |
+| `expired_signature` | `now` is past `expires + skew` — almost always **clock drift** | Run NTP. Signatures cap at 300 s and tolerate only ±60 s of skew |
+| `replayed_nonce` | This `(keyid, nonce)` was already seen — or your verifier's nonce store isn't shared across instances | Agents: fresh random nonce per request (the SDK does this). Services: share one nonce store across all instances (§5.6) |
+| `revoked_key` | The signing DID is on the service's revocation list | The key was revoked. Re-key through the owner and re-link; don't retry |
+
+<Warning>
+**Clock skew is the most common first-request failure.** A signed request is valid for at most 300 seconds and tolerates ±60 s of drift between agent and service. If your agent's clock is off — common in containers and CI — every signature reads as future-dated or expired. Sync time before debugging anything else.
+</Warning>
+
+<Note>
+**`replayed_nonce` under load on a multi-instance service** usually means a per-process nonce cache. §5.6 requires the seen-`(keyid, nonce)` set to be shared and atomic across every verifier instance. On Cloudflare, use `DurableObjectNonceStore`, not `KvNonceStore`, for atomic check-and-set. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
+</Note>
+
+## Attestation rejected (401)
+
+| Code | Cause | Fix |
+|---|---|---|
+| `attestation_required` | The service is `attested_only` and no valid attestation was present — at signup, *or* an attested session's window lapsed (§10.7) | [Link to a human](/guides/link-to-a-human) once, then mint a per-service JWT. The SDK's `AttestedFetcher` and `afauth call` re-mint on this challenge automatically |
+| `invalid_attestation` | JWT signature failed, `iss` ≠ `afauth-trust`, `aud` ≠ your `service_did`, `sub` ≠ the signing DID, or `exp` is past | Mint a fresh JWT (≤ 900 s lived). Check your `service_did` matches the `aud` claim **byte-for-byte** |
+
+A common `invalid_attestation` cause is an `aud` mismatch: the agent minted for `did:web:api.example.com` but the service's `service_did` is `did:web:example.com`. They must be identical.
+
+## Claim & ownership (401 / 403 / 409)
+
+| Code | Status | Cause | Fix |
+|---|---|---|---|
+| `owner_authentication_required` | 401 / 403 | An owner-binding op arrived with no owner session (401), or a session that doesn't own the account (403) | Authenticate the human at your claim page and present a real `OwnerSession` |
+| `owner_session_too_stale` | 403 | The session is valid but its authentication is older than the §7.5 freshness window (60–300 s) | Re-authenticate the human immediately before the operation |
+| `owner_binding_blocked` | 403 | An **agent-signed** request tried an owner-binding operation post-claim | Those operations require the human, never the agent key — route them through the owner session |
+| `already_claimed` / `not_claimed` | 409 | The account isn't in the state the operation needs | Check account state first via introspection; the [state machine](/concepts/ceremony) is enumerated |
+
+## Lifecycle (404 / 410)
+
+| Code | Status | Cause | Fix |
+|---|---|---|---|
+| `unknown_account` | 404 | The account doesn't exist and the service requires **explicit** signup (implicit disabled, §6.4) | Call the explicit signup endpoint (`afauth signup --explicit`) first |
+| `account_expired` | 410 | The account passed `unclaimed_ttl_seconds` without being claimed | It's gone — create a fresh one, and claim sooner next time |
+
+## Rate limited (429)
+
+`rate_limit_exceeded` from a **service** and `rate_limited` from the **trust attestor** are different things, and neither is a revocation:
+
+- **Service `429 rate_limit_exceeded`** — you hit a per-route limit. Honor the `Retry-After` header and back off. See [Rate limiting](/guides/rate-limiting).
+- **Attestor `429 rate_limited`** — you're minting attestations too fast (the per-binding daily cap). Back off; **do not re-link** — your binding is fine.
+
+## "I revoked, but the agent still works"
+
+Revocation has two levers, each with a deliberate latency ([Revocation](/concepts/revocation)):
+
+- **Local revoke at a service** is immediate at *that* service but propagates nowhere else — there's no global revocation bus (§8.3).
+- **Global revoke at the attestor** stops *new* attestations, but tokens already minted stay valid until they expire (≤ 15 min). Services that only checked attestation at signup never see it — unless they run [attested sessions](/guides/keep-attested-access-live), which close the gap within the freshness window.
+
+To cut a stolen key off everywhere, act at each service *and* the attestor. The full runbook is [Recover a compromised key](/guides/recover-a-compromised-key).
+
+## Still stuck?
+
+<CardGroup cols={2}>
+  <Card title="Error codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Every reserved code, status, and trigger.
+  </Card>
+  <Card title="Security model" icon="shield-halved" href="/concepts/security-model">
+    Why these boundaries exist.
+  </Card>
+</CardGroup>

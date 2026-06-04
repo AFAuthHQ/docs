@@ -1,0 +1,60 @@
+---
+title: "Security model"
+description: "What AFAuth protects against, what it assumes, and what it deliberately leaves to services — the §12 threat model, digested."
+---
+
+AFAuth's security rests on one invariant and a small set of mechanisms. This page is the digest; [§12 of the spec](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#12-security-considerations) is normative. If you're evaluating AFAuth, read this first.
+
+## The invariant
+
+> The agent's signature alone MUST NOT bind ownership.
+
+An agent creates and operates its own account by signing requests. But the transition to *human ownership* — the [ceremony](/concepts/ceremony) — requires a second, independent authentication: the human authenticating from the invited address. A stolen agent key can invite an attacker's address, but cannot complete the claim *as* that human. This is what keeps a compromised key recoverable after claim, and it's a conformance MUST (§7.1, Appendix D.7).
+
+## What it protects against
+
+| Threat | Mechanism | Spec |
+|---|---|---|
+| **Replay** | `nonce` + a `created`/`expires` window (≤ 300 s) + ±60 s skew + a shared seen-`(keyid, nonce)` set | §5.6, §12.2 |
+| **Request tampering** | RFC 9421 covers `@method`, `@target-uri`, and `content-digest`; any change breaks the signature | §5 |
+| **Ownership hijack with a stolen key** | The two-step claim ceremony — the human authenticates independently | §7.1, §12.1 |
+| **Spam / Sybil signup** | Attestation: a `sub_h` pseudonym ties a fleet of keys to one human, rate-limited or banned as one account | §10, §12.9 |
+| **Attestation forgery** | Services validate the attestor's signature against an authoritative key source, and SHOULD pin it | §12.5 |
+| **Cross-service correlation** | Optional per-service key derivation makes an agent unlinkable across services | §3.3, §12.4 |
+| **Claim phishing** | Ceremony-strength guidance: POST-confirm magic links; prefer phishing-resistant (WebAuthn / passkey) methods | §12.3, §12.6 |
+
+## What it assumes
+
+AFAuth is explicit about its trust boundaries:
+
+- **TLS protects the discovery document.** v0.1 does not sign `/.well-known/afauth`; its integrity depends on HTTPS. Serve it with HSTS, and treat a `service_did` change with suspicion (§12.8).
+- **The verifier-to-backend hop is trusted.** When a sidecar or proxy verifies and forwards, the forwarded identity isn't re-signed — the backend trusts the verifier across a typically-internal hop (Appendix E.2).
+- **The attestor is honest, and its pseudonym key is secret.** `sub_h` shifts anti-Sybil posture onto the attestor; its `K_pseudonym` is a long-lived secret that must live in an HSM/KMS and never be logged (§12.9).
+- **Revocation reach is honest but bounded.** Already-issued attestations stay valid until they expire, and an agent's local state is untrusted after compromise. Recovery means acting at each service *and* the attestor (§8.5).
+
+## What it deliberately leaves out
+
+Honest non-goals matter as much as guarantees:
+
+- **Pre-claim key compromise has no in-protocol remedy.** If an attacker steals the key *before* anyone claims the account, they can claim it themselves; the legitimate operator's only recourse is to abandon the account. Use hardware-backed or KMS keys for high-value agents (§12.1, Appendix D.3).
+- **Pre-claim account state is the service's problem.** An agent can accumulate config, integrations, and billing before a human claims; surfacing or resetting that on claim is a service policy, not a wire-protocol concern (§12.7).
+- **Cross-service revocation isn't distributed.** Revoking at one service doesn't propagate to others — there's no global revocation bus in v0.1 (§8.3).
+- **Multi-owner and multi-principal accounts are out of scope** for v0.1 — no team accounts, no shared agents (§10.5.4, Appendix D.2).
+- **Magic-link claims are AAL1.** They're phishable; services needing higher assurance should use WebAuthn / passkeys or an OIDC `acr` of `phishing-resistant` (§12.3).
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="The ceremony" icon="lock" href="/concepts/ceremony">
+    The two-step verify and why a stolen key stays recoverable.
+  </Card>
+  <Card title="Signing requests" icon="signature" href="/concepts/signing">
+    Replay protection and the covered components.
+  </Card>
+  <Card title="Revocation" icon="ban" href="/concepts/revocation">
+    The global and local levers, and their honest limits.
+  </Card>
+  <Card title="Attestation" icon="users" href="/concepts/attestation">
+    `sub_h`, Sybil resistance, and attestor trust.
+  </Card>
+</CardGroup>

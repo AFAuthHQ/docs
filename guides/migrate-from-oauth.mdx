@@ -1,0 +1,83 @@
+---
+title: "Migrate from OAuth or API keys"
+description: "AFAuth doesn't replace your existing auth — it adds an agent-native front door alongside it. Here's the incremental path."
+---
+
+If your service already authenticates humans with OAuth and machines with API keys, AFAuth is **additive**, not a rip-and-replace. Your user table, your IdP, and your billing stay where they are. AFAuth adds the one thing they can't: a first-class identity for the *agent itself*, so an AI agent can sign up and operate on its own behalf without impersonating a human or carrying a human's delegated secret.
+
+<Note>
+New to the "why"? [Why AFAuth](/concepts/why-afauth) covers what breaks when agents reach services through OAuth delegation or shared API keys. This page is the how — adopting it next to what you already run.
+</Note>
+
+## The incremental path
+
+<Steps>
+
+<Step title="Add AFAuth in optional mode">
+
+Stand up an AFAuth surface with attestation **optional**. It accepts un-linked agents while you ramp, verifies attestations when present, and leaves your existing OAuth and API-key paths untouched.
+
+```typescript
+const server = defineService({
+  baseUrl: "https://api.example.com",
+  serviceDid: "did:web:api.example.com",
+  // ...stores, recipients...
+  attestation: "optional", // verify when present; accept un-linked agents while you ramp
+});
+```
+
+</Step>
+
+<Step title="Route by credential">
+
+One branch at your edge: AFAuth-signed requests carry `Signature` + `Signature-Input` headers. Route those to AFAuth verification and let everything else fall through to your existing middleware.
+
+```typescript
+if (req.headers.has("signature-input")) {
+  return handleAfauth(req);   // verify the agent signature
+}
+return existingAuth(req);     // your OAuth / API-key path, unchanged
+```
+
+</Step>
+
+<Step title="Map accounts to your user model">
+
+An AFAuth account has a stable `account_id`. Store it next to your own user/org records. While the account is `UNCLAIMED`, it's the agent acting alone; when a human [claims](/guides/invite-and-claim) it, the claim hands you a verified human identity (email, OIDC `iss`+`sub`) you can link to that person's existing OAuth account — bridging the agent to the human who owns it.
+
+</Step>
+
+<Step title="Tighten to attested_only">
+
+Once agents are linking to humans, flip the default to `attestation: "required"` (`unclaimed_mode: "attested_only"`). Now a verified human stands behind every new signup, a human's whole fleet of keys groups onto [one account](/concepts/attestation) for quotas and bans, and you have real spam resistance — without ever provisioning an API key.
+
+</Step>
+
+</Steps>
+
+## What maps to what
+
+| You have | Keep it for | Add AFAuth for |
+|---|---|---|
+| OAuth / OIDC for humans | Human login; the claim ceremony's identity check | The agent's own identity, pre-claim |
+| API keys for machines | Existing server-to-server integrations | Agents that self-serve without you minting a secret |
+| A users / orgs table | Billing, ownership | Linking a claimed `account_id` to the human who owns it |
+
+AFAuth occupies the identity-and-authentication layer for agents and sits *alongside* these — it doesn't ask you to move any of them.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Accept AFAuth on your service" icon="server" href="/quickstart-service">
+    Stand up the service surface.
+  </Card>
+  <Card title="Attestation modes" icon="toggle-on" href="/concepts/attestation">
+    `off`, `optional`, `required` — and when to move.
+  </Card>
+  <Card title="Invite and claim" icon="handshake" href="/guides/invite-and-claim">
+    How a claim bridges an agent account to a human.
+  </Card>
+  <Card title="Why AFAuth" icon="circle-question" href="/concepts/why-afauth">
+    What delegation and shared keys can't do.
+  </Card>
+</CardGroup>

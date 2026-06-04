@@ -32,6 +32,7 @@
             "pages": [
               "concepts/how-it-works",
               "concepts/why-afauth",
+              "concepts/security-model",
               "concepts/identity-and-keys",
               "concepts/signing",
               "concepts/attestation",
@@ -39,7 +40,8 @@
               "concepts/ceremony",
               "concepts/revocation",
               "concepts/service-directory",
-              "concepts/error-envelope"
+              "concepts/error-envelope",
+              "concepts/glossary"
             ]
           }
         ]
@@ -50,7 +52,6 @@
           {
             "group": "Build an agent",
             "pages": [
-              "guides/build-an-agent-typescript",
               "guides/build-an-agent-cli",
               "guides/link-to-a-human"
             ]
@@ -58,7 +59,6 @@
           {
             "group": "Operate a service",
             "pages": [
-              "guides/accept-afauth-on-your-service",
               "guides/verify-a-request",
               "guides/accept-afauth-trust",
               "guides/keep-attested-access-live",
@@ -68,8 +68,13 @@
               "guides/rotate-keys",
               "guides/rate-limiting",
               "guides/deploy-cloudflare-worker",
-              "guides/list-on-the-registry"
+              "guides/list-on-the-registry",
+              "guides/migrate-from-oauth"
             ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": ["guides/troubleshooting"]
           }
         ]
       },
@@ -151,7 +156,7 @@
         "groups": [
           {
             "group": "Changelog",
-            "pages": ["changelog/overview"]
+            "pages": ["changelog/overview", "changelog/versioning"]
           }
         ]
       }

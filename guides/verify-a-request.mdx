@@ -3,4 +3,86 @@ title: "Verify a request"
 description: "Use the Verifier to authenticate incoming AFAuth requests."
 ---
 
-<Note>Stub — `Verifier.verify()`, replay window, nonce store, error handling.</Note>
+Every AFAuth request carries an [RFC 9421 signature](/concepts/signing). Verifying it answers one question — *did this agent really sign this exact request?* — and hands you the agent's DID to authorize against.
+
+If you build with [`defineService`](/quickstart-service) and route to the endpoint handlers, the AFAuth protocol endpoints **self-verify** — you don't call the verifier yourself. You reach for it directly in two cases:
+
+- **Fronting a backend** — an edge proxy or service-mesh sidecar that checks the signature, then forwards to an unaware backend ([Appendix E](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#appendix-e-deployment-patterns)).
+- **Guarding your own business endpoints** — your `/api/*` routes, not the AFAuth protocol routes. Use [`server.verifyAttested`](/guides/keep-attested-access-live) there if you also want a liveness gate; use the bare `Verifier` if you only need the signature.
+
+## Verify the signature
+
+`Verifier` performs §5.5 + §5.6 — signature parsing, key resolution, the Ed25519 check, and the timestamp + nonce checks — with no network I/O, since agent identifiers are `did:key` and the key decodes straight from the DID:
+
+```typescript
+import { MemoryNonceStore, MemoryRevocationList, Verifier } from "@afauthhq/server";
+import { AFAuthError } from "@afauthhq/core";
+
+const verifier = new Verifier({
+  serviceDid: "did:web:api.example.com",
+  nonceStore: new MemoryNonceStore(),         // §5.6 — see the warning below
+  revocationList: new MemoryRevocationList(),  // §8.3 — durable in production
+});
+
+export async function handleSignedRequest(req: Request): Promise<Response> {
+  try {
+    const body = req.body ? await req.text() : null;
+    const verified = await verifier.verify({
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body,
+    });
+
+    // verified.agentDid is the authenticated identity. Authorize per
+    // your own policy, then serve or forward.
+    return new Response(JSON.stringify({ ok: true, agent: verified.agentDid }), {
+      headers: { "content-type": "application/json" },
+    });
+  } catch (err) {
+    if (err instanceof AFAuthError) return err.toResponse();
+    throw err;
+  }
+}
+```
+
+`verify` returns the verified identity on success and **throws** an `AFAuthError` on any failure — `.toResponse()` renders the [error envelope](/concepts/error-envelope). The runnable version is [`examples/recipes/verify.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts).
+
+## What a failure means
+
+Every verification failure is a `401` with a specific code:
+
+| Code | Cause | Agent's fix |
+|---|---|---|
+| `invalid_signature` | Bad signature, key resolution failed, or `Content-Digest` ≠ body | Re-sign; don't mutate the body after signing |
+| `expired_signature` | `now > expires + skew` — clock drift or the request sat too long | Sync the clock (NTP); sign and send promptly |
+| `replayed_nonce` | This `(keyid, nonce)` was already seen in the window | Use a fresh random nonce per request (the SDK does) |
+| `revoked_key` | The signing DID is on your revocation list | The key was revoked — re-key, don't retry |
+
+The full set is in the [error-code reference](/reference/error-codes).
+
+## Two things production needs
+
+<Warning>
+**The nonce store must be shared across every instance.** §5.6 requires the seen-`(keyid, nonce)` set to span all verifier instances — a per-process cache lets a replay through on a sibling. On Cloudflare, use `DurableObjectNonceStore` for atomic check-and-set; `KvNonceStore` is eventually consistent and admits a narrow replay window. See [Deploy to Cloudflare Workers](/guides/deploy-cloudflare-worker).
+</Warning>
+
+- **Supply a durable revocation list.** §8.3 requires one; the `Memory*` stores reset on restart.
+- **Hand the verifier the exact bytes you received.** The signed `Content-Digest` covers the raw body — don't let JSON re-serialization in your stack mangle it before verification.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Signing requests" icon="signature" href="/concepts/signing">
+    What's in the signature and the seven verification steps.
+  </Card>
+  <Card title="Keep attested access live" icon="arrows-rotate" href="/guides/keep-attested-access-live">
+    Add a §10.7 liveness gate with `verifyAttested`.
+  </Card>
+  <Card title="Error codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Every code, status, and trigger.
+  </Card>
+  <Card title="Rate limiting" icon="gauge-high" href="/guides/rate-limiting">
+    Cap request volume per agent and per human.
+  </Card>
+</CardGroup>

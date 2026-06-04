@@ -3,4 +3,121 @@ title: "Invite and claim"
 description: "Hand off an agent-owned account to a human owner."
 ---
 
-<Note>Stub — `afauth invite`, claim flow, owner session freshness (AFAP-0002).</Note>
+An AFAuth account starts agent-owned. When you want a human to own it, the agent **invites** a person; ownership **commits** only once that person authenticates from the invited address. That two-step is the [ceremony](/concepts/ceremony) — the security boundary that stops a stolen agent key from re-targeting ownership. This page is the how-to; the concept page is the why.
+
+<Note>
+**Claiming ≠ linking.** [Linking to a human](/guides/link-to-a-human) binds your agent to a human at `trust.afauth.org` so an `attested_only` service accepts it — ownership stays with the agent. **Claiming** (this page) hands *ownership* of one account to a human. They're independent and can happen in either order.
+</Note>
+
+## The flow
+
+```
+  Agent                         Service                        Human
+    │  buildOwnerInvitation        │                              │
+    │  recipient: alice@…          │                              │
+    │─────────────────────────────▶│  account → INVITED           │
+    │                              │  ceremony issued (magic link)│
+    │                              │─────────────────────────────▶│
+    │                              │                              │ authenticates
+    │                              │◀─────────────────────────────│ as alice@…
+    │                              │  match passes → CLAIMED       │
+```
+
+## Agent side — stage the invitation
+
+Your agent signs an owner-invitation naming the recipient. The account moves to `INVITED` and the service runs its ceremony for that recipient type.
+
+<Tabs>
+
+<Tab title="TypeScript">
+
+```typescript
+const signed = await agent.buildOwnerInvitation({
+  baseUrl: "https://api.example.com",
+  recipient: { type: "email", value: "alice@example.com" },
+});
+
+await fetch(signed.url, {
+  method: signed.method,
+  headers: signed.headers,
+  body: signed.body,
+});
+```
+
+</Tab>
+
+<Tab title="CLI">
+
+```bash
+afauth invite alice@example.com --service https://api.example.com
+
+# other recipient types (§7.7):
+afauth invite --type phone --value +14155550173 --service https://api.example.com
+afauth invite --type oidc  --issuer https://accounts.google.com --sub 12345 --service https://api.example.com
+afauth invite --type did   --value did:web:alice.example --service https://api.example.com
+```
+
+</Tab>
+
+</Tabs>
+
+To send the human somewhere after they finish, pass a redirect URL (`--redirect-url` on the CLI). Its host must be in the service's `redirectAllowList` (§7.2), or the service rejects it.
+
+## Service side — issue and complete the ceremony
+
+A `defineService` server already routes the two endpoints. The invitation endpoint is agent-signed; the claim-completion endpoint is **not** — it depends on a human-authenticated session, because the agent key may be stolen.
+
+```typescript
+// agent-signed: stages the recipient, account → INVITED
+if (url.pathname === "/afauth/v1/accounts/me/owner-invitation") {
+  return server.handleOwnerInvitation(req);
+}
+
+// human-authenticated: your claim page collects an OwnerSession, then
+// POSTs to /afauth/v1/claim/<token> and you call:
+return server.handleClaimCompletion(req, session);
+```
+
+The recipient handler delivers the ceremony — for `email`, a magic link. The reference SDK ships `consoleEmailHandler` (logs the link to stderr); swap in your real transport for production. `email` is the only handler the v0.1 reference SDK ships; `phone`, `oidc`, and `did` are defined by the spec, but you supply the handler.
+
+When the human authenticates, the service applies the **match relation** (§7.4): it MUST confirm the authenticated identity equals the pending recipient — case-insensitive email per RFC 5321, exact `iss`+`sub` for OIDC, signed-challenge DID equality for `did` — before transitioning to `CLAIMED`.
+
+## After the claim
+
+Both the agent and the owner are first-class. The agent keeps signing ordinary requests — it loses nothing. The owner gains authority over **owner-binding operations**: changing the bound identity, enrolling credentials, adding recovery contacts, linking federated identities, adding principals.
+
+Those operations require a *freshly* authenticated owner session — [§7.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim) recommends a 60–300 second window. An otherwise-valid session that's too old is rejected with `403 owner_session_too_stale`; an agent-signed attempt is rejected with `403 owner_binding_blocked`. Enforce it in your handlers:
+
+```typescript
+import { assertFreshOwnerSession } from "@afauthhq/server";
+
+assertFreshOwnerSession(session, { maxAgeSeconds: 120 });
+// ...proceed with the owner-binding operation
+```
+
+## State transitions
+
+| From | To | Trigger |
+|---|---|---|
+| `UNCLAIMED` | `INVITED` | agent stages an owner invitation |
+| `INVITED` | `CLAIMED` | human authenticates as the recipient |
+| `INVITED` | `UNCLAIMED` | invitation TTL expires with no replacement |
+
+A newer invitation **atomically supersedes** a pending one (§7.3) — there's never more than one live invitation per account. Claiming is always optional; an account can run `UNCLAIMED` until `unclaimed_ttl_seconds` elapses.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="The ceremony" icon="handshake" href="/concepts/ceremony">
+    Why the agent's signature alone can't bind ownership.
+  </Card>
+  <Card title="Revoke an account" icon="ban" href="/guides/revoke-an-account">
+    The owner-authenticated local revocation lever.
+  </Card>
+  <Card title="afauth invite reference" icon="terminal" href="/cli/commands/invite">
+    Every flag and recipient type.
+  </Card>
+  <Card title="Recover a compromised key" icon="shield-halved" href="/guides/recover-a-compromised-key">
+    What a claimed owner can do that an unclaimed agent can't.
+  </Card>
+</CardGroup>

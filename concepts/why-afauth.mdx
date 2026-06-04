@@ -44,7 +44,7 @@ AFAuth is one layer of the agent-services stack. It addresses **identity** — c
 | Authorization | OAuth 2.0 `actor_token`, OIDC for AI Agents, FIDO AP2, Visa Trusted Agent | An AFAuth signature serves as the `actor_token` and as the cryptographic identity inside payment-authorization tokens |
 | **Identity** | **AFAuth** | Self-sovereign agent identity for the open web |
 
-AFAuth doesn't replace OAuth, MCP, or A2A — it plugs into them. Attestation is different: AFAuth defines its own §10 attestation hook and ships a default trust attestor (`afauth-trust`), so spam-resistance works out of the box, while still letting third-party platform and commerce attestors (Entra, Stripe, FIDO AP2) plug in alongside it.
+AFAuth doesn't replace OAuth, MCP, or A2A — it plugs into them; [Migrate from OAuth or API keys](/guides/migrate-from-oauth) shows the incremental path for an existing service. Attestation is different: AFAuth defines its own §10 attestation hook and ships a default trust attestor (`afauth-trust`), so spam-resistance works out of the box, while still letting third-party platform and commerce attestors (Entra, Stripe, FIDO AP2) plug in alongside it.
 
 ## When NOT to use AFAuth
 
@@ -54,6 +54,7 @@ AFAuth doesn't replace OAuth, MCP, or A2A — it plugs into them. Attestation is
 
 ## Further reading
 
+- [Security model](/concepts/security-model) — what it protects against, what it assumes, what it leaves to services.
 - [Identity and keys](/concepts/identity-and-keys) — how AFAuth names accounts.
 - [The ceremony](/concepts/ceremony) — how an agent-owned account becomes human-owned.
 - [Spec §1](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1-introduction) — the normative motivation.

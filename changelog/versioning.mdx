@@ -1,0 +1,54 @@
+---
+title: "Versioning & stability"
+description: "What 'Spec v0.1 — Stable' means in practice: the forward-compatibility rules you can build on, and the policies that aren't defined yet."
+---
+
+AFAuth is **spec v0.1**, marked *Stable* in the [specification header](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md). Here's what that does and doesn't promise.
+
+## Spec vs. implementations
+
+Two version lines move independently:
+
+- **The protocol spec** — `afauth_version` is `"0.1"`, carried in every discovery document (§4.3). This is the wire contract.
+- **The reference implementations** — the [TypeScript SDK](https://www.npmjs.com/org/afauthhq), [Go CLI](https://github.com/AFAuthHQ/cli), trust attestor, and registry version on their own release cadence (the docs reference, e.g., `@afauthhq/server` `0.2.0+` and the CLI `0.6.0+`). They implement spec v0.1; their package versions are not the spec version.
+
+Track implementation releases in the [changelog](/changelog/overview).
+
+## The forward-compatibility you can build on
+
+v0.1 has no formal SemVer or deprecation policy (see below), but it *does* define explicit forward-compatibility rules — and those are the real stability guarantee. A conformant implementation MUST:
+
+- **Treat unknown discovery fields as opaque** (§4.2) — new fields can appear without breaking you.
+- **Not assume absent features are supported** (§4.4) — gate on what's advertised.
+- **Ignore unknown `verification` values** rather than reject them (§10.3.1) — new attestation signals can be added safely.
+- **Ignore unknown error codes** safely (§11.3) — program against the `code` you know, tolerate the rest.
+
+Conversely, a service MUST NOT put unregistered recipient-type identifiers on the wire (§7.7.5). Build to these rules and a minor protocol revision won't break you.
+
+## Already removed
+
+A few surfaces from early drafts are gone. Implementations MUST NOT require them:
+
+- The `@authority` covered component — `@target-uri` subsumes it (§5.2).
+- The `AFAuth-Account` header — `keyid` is the sole identity surface (§5.2, §14.2).
+
+## What isn't promised yet
+
+In the interest of honesty:
+
+- **No SemVer commitment.** "Stable" is the spec's own word; it isn't paired with a formal versioning scheme or a "breaking changes will…" clause.
+- **No deprecation window.** The removals above happened during v0.1's drafting, not through a staged deprecation cycle.
+- **No signed discovery document.** Integrity depends on TLS in v0.1; signing the document is flagged as a possible future revision (§12.8).
+
+The `.well-known/afauth` URI registration is **Provisional**, and the change controller is the AFAuth Protocol editors (§14.1). Proposals are welcome — the spec invites them in its status line.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Changelog" icon="clock-rotate-left" href="/changelog/overview">
+    What shipped in each release.
+  </Card>
+  <Card title="Conformance" icon="circle-check" href="/spec/conformance">
+    The v0.1 criteria and test vectors.
+  </Card>
+</CardGroup>
