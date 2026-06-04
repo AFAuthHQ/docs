@@ -1,0 +1,266 @@
+---
+title: "How it works, end to end"
+description: "The whole arc in one place: an agent generates a keypair, proves a human stands behind it without revealing them, signs its first request to create an account, and optionally hands ownership to a human later."
+---
+
+Every auth system in wide use today assumes a human is the root of trust. AFAuth inverts that: an **agent is a first-class principal from its first request**, identified by a keypair it generates itself. This page is the connective map — identity, signed requests, spam-resistance, and the handoff of ownership to a human — with links into the deep-dive concept pages for each piece.
+
+For the *argument* (why invert, where AFAuth sits in the stack, when not to use it), see [Why AFAuth](/concepts/why-afauth). This page is the *mechanics*.
+
+<Warning>
+**The invariant everything hangs on.** The agent's signature alone MUST NOT bind ownership. A stolen agent key can do many things, but it can never quietly make an attacker the owner — because ownership requires a second, human authentication the key cannot forge. Hold onto this; it explains most of the design.
+</Warning>
+
+## The cast, and who talks to whom
+
+Five roles. The agent is the center of gravity. The service publishes a discovery document and verifies signatures. The trust attestor vouches that a human stands behind an agent — without revealing who. The human can claim ownership. The registry is an optional phone book.
+
+```text
+          link + mint JWT   ┌─────────────────────┐   verify JWT offline
+        ┌──────────────────▶│   Trust attestor    │◀──────────────────┐
+        │  ①                │   trust.afauth.org  │   (jwks.json)      │
+        │                   └─────────────────────┘                    │
+        │                                                              │
+  ┌───────────┐      ②  signed request (RFC 9421)            ┌──────────────────┐
+  │   Agent   │─────────────  + AFAuth-Attestation  ────────▶│     Service      │
+  │ did:key:… │                                              │ /.well-known/    │
+  └───────────┘                                              │ afauth + Verifier│
+                                                             └──────────────────┘
+                                                                      ▲
+                                                              ③ claim │ (authenticate)
+                                                             ┌────────┴─────────┐
+                                                             │      Human       │
+                                                             └──────────────────┘
+```
+
+**Read it as three relationships.** ① The agent *links to a human* at the trust attestor once, then mints a short-lived JWT per service. ② The agent makes *signed requests* to the service, attaching that JWT when the service demands one; the service verifies the JWT *offline* against the attestor's public keys. ③ Separately and optionally, a human *claims* ownership by authenticating directly to the service. The [registry](/concepts/service-directory) is non-normative — an opt-in directory nobody is required to use.
+
+| Role | What it does |
+|---|---|
+| **Agent** | Holds an Ed25519 key; its `did:key` *is* its identity. Signs every request. |
+| **Service** | Publishes `/.well-known/afauth`, verifies signatures, hosts the claim page. |
+| **Trust attestor** | Vouches that a verified human stands behind an agent DID — with no PII. |
+| **Human / Owner** | Optional. Can claim ownership of an account later. |
+| **Registry** | Optional directory of AFAuth-enabled services. Non-normative. |
+
+## The end-to-end journey
+
+From a freshly generated keypair to a human-owned account, in the order it actually happens. Steps 0–4 are the default path to *using* a service; 5–6 are the optional ownership handoff.
+
+<Steps>
+
+<Step title="Generate an identity — Agent">
+`Agent.generate()` (or `afauth init`) makes a fresh Ed25519 keypair and derives `did:key:z6Mk…`. The private key is the sole credential for everything that follows — store it encrypted at rest (the CLI writes `~/.afauth/key.json` at mode `0600`). See [Identity and keys](/concepts/identity-and-keys).
+</Step>
+
+<Step title="Link to a human, once — Agent + Human + Trust attestor">
+Most services reject anonymous signups (the next steps explain why). To become acceptable, the agent opens a link request at `trust.afauth.org`, surfaces a deep link, and a human signs in and confirms it. The result is a **binding** between this agent DID and that human — carrying **no ownership** and creating **no service account**. The binding lasts ~90 days. The mint is keyless: the agent later signs each token request with its own key, so there's no bearer secret to store. See [Link your agent to a human](/guides/link-to-a-human).
+</Step>
+
+<Step title="Discover the service — Agent + Service">
+`GET /.well-known/afauth` returns the service's `service_did`, endpoint paths, accepted signature algorithms, accepted attestors, and crucially its `billing.unclaimed_mode`. If that reads `attested_only` (the SDK default), the agent knows it must attach an attestation.
+</Step>
+
+<Step title="Mint a per-service attestation — Agent + Trust attestor">
+`trust.token(service_did)` returns a short-lived JWT (max 15-minute life), **audience-bound** to exactly this service. It proves "a verified human is on the hook" and carries a pairwise pseudonym `sub_h` — but **zero PII**. A token minted for service A cannot be replayed at service B. See [Attestation](/concepts/attestation).
+</Step>
+
+<Step title="First signed request — the account is born — Agent + Service">
+The agent sends a normal request, signed per RFC 9421, with the JWT in the `AFAuth-Attestation` header. The service verifies the signature (locally) and the JWT (offline, against the attestor's JWKS), then **implicitly creates the account** in state `UNCLAIMED`. There's no separate "create account" call — the first valid request *is* the signup. The agent now operates freely; every later request is just signed.
+</Step>
+
+<Step title="Invite a human to claim it, optional — Agent + Human + Service">
+When (and only if) ownership should pass to a person, the agent stages an invitation: `POST …/owner-invitation` with an `email` (or `phone` / `oidc` / `did`) recipient. The account moves to `INVITED` and the service emails the recipient a magic link. **Nothing is bound yet.**
+</Step>
+
+<Step title="The human authenticates — ownership commits — Human + Service">
+The recipient clicks the link and authenticates *as* that identity at the service's claim page. The service checks their verified identity against the staged recipient (the **match relation**), and only then transitions the account to `CLAIMED`. From here the agent keeps operating as before, but **owner-binding operations** require the human's fresh session — the agent key alone can't change who owns the account. See [The ceremony](/concepts/ceremony).
+</Step>
+
+</Steps>
+
+<Note>
+**The same path, in four CLI lines.**
+
+```bash
+afauth init                                   # 0 · keypair → ~/.afauth/key.json
+afauth trust link                             # 1 · bind to a human (one-time)
+afauth signup https://api.example.com         # 2–4 · discover, auto-mint JWT, first signed request
+afauth call   https://api.example.com/afauth/v1/accounts/me   # operate, signed
+```
+</Note>
+
+## What "a signed request" actually means
+
+AFAuth doesn't invent a signature format. It uses **HTTP Message Signatures ([RFC 9421](https://www.rfc-editor.org/rfc/rfc9421))**: the agent signs a canonical view of the request, and the identity travels inside the signature's `keyid` parameter — there is no separate identity header to spoof.
+
+```http
+POST /afauth/v1/accounts/me/owner-invitation HTTP/1.1
+Host: api.example.com
+Content-Digest: sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:
+Signature-Input: sig1=("@method" "@target-uri" "content-digest");
+                 created=1715000000;expires=1715000060;
+                 nonce="9f8b3a7c1d2e4f56";
+                 keyid="did:key:z6MkiYbwC5honA2sxE7XLAyJMDFibLvVg8FgodBX4A4CaUgr";
+                 alg="ed25519"
+Signature: sig1=:0123abcde…:
+```
+
+The verifier recovers the public key by **decoding `keyid`** — no network call — then checks the signature, the freshness window (`created`/`expires`), and that the `nonce` is unseen for this `keyid`. Any failure returns `401` with a [structured error code](/concepts/error-envelope) such as `invalid_signature`, `expired_signature`, or `replayed_nonce`. Because `@target-uri` is signed, a signature can't be replayed at another host. Full detail — the six verifier checks, edge-deployment, header-stripping rules — is in [Signing requests](/concepts/signing).
+
+## The account lifecycle
+
+An account is in exactly one of five states. A service-local, opaque `account_id` names it — distinct from any key, and **stable across key rotation**, so one account can hold several agent credentials ("one account, many devices").
+
+```text
+          ┌──────────────── invite expires ───────────────┐
+          ▼                                                │
+  ∅ ──▶ UNCLAIMED ──── invite owner ───▶ INVITED ──── human auth ✓ ──▶ CLAIMED
+          │                                 │                              │
+     unclaimed TTL                   TTL while pending                owner deletes
+          │                                 │                              │
+          ▼                                 ▼                              ▼
+       EXPIRED                           EXPIRED                       ARCHIVED
+```
+
+Only the transitions drawn here are legal; a conforming service must reject any other. Note the one path *back*: an expired invitation returns the account to `UNCLAIMED`, not forward to `CLAIMED`. The full state table and transition rules live in [The ceremony](/concepts/ceremony).
+
+## The two human bindings (don't conflate them)
+
+This is the single most confusing thing about AFAuth, so it gets called out everywhere. An agent can be connected to a human in **two completely independent ways**. They serve different purposes, live in different places, and can happen in either order. A default agent does *both*.
+
+| | **Linking to a human** | **Claiming the account** |
+|---|---|---|
+| **When** | Before / at signup | After / any time |
+| **Purpose** | Spam-resistance | Ownership |
+| **Where** | At the trust attestor (`trust.afauth.org`) | At the service, per account |
+| **Proves** | A verified human stands behind the agent DID | This human *owns* this one account |
+| **Ownership** | Transfers none; creates no account | Binds ownership; the security boundary |
+| **Scope** | Every attested service at once | One service, one account |
+| **Produces** | The pairwise pseudonym `sub_h` | Owner-binding authority for the human |
+
+Mnemonic: **linking** answers "is a real person behind this bot?" (asked by the service, answered by the attestor, no PII). **Claiming** answers "who *owns* this account?" (answered by the human authenticating directly to the service).
+
+## Spam-resistance without PII
+
+Accepting *any* keypair with no registry is what makes AFAuth open — and, alone, what would make it spammable: 10,000 throwaway keys look like 10,000 customers. The [attestation](/concepts/attestation) layer closes that gap by binding abuse-accounting to a **human**, while collecting nothing about them.
+
+A trust attestation says exactly one thing: *the agent DID is bound to a human-controlled account that completed a verification method* (`email` / `oauth` / `payment`). It's a categorical signal, not a capability grant, and not an identity to log. It carries `sub_h`, a per-service pairwise pseudonym that is:
+
+- **Pairwise** — a different value at every service, so two services can't correlate the same human.
+- **Stable** — the same value for one `(human, service)` across all the human's agents and key rotations.
+- **Opaque** — ≥128 bits, not invertible to identity.
+
+Because all of a human's agents share one `sub_h` at a given service, the service groups them into one account and rate-limits the *human* — their laptop and phone keep working, while a flood of throwaway keys still hits one bucket. This is on by default: `defineService` ships `unclaimed_mode: "attested_only"` and wires the [trust attestor](/concepts/trust-attestor) in. Spam-resistance is the happy path, not an add-on.
+
+## Cutting an agent off — two levers
+
+An agent presents two credentials (a signature and, sometimes, an attestation), so it is revoked in two different places. Neither lever subsumes the other.
+
+| | **Global** — at the attestor | **Local** — at the service |
+|---|---|---|
+| **Kills** | New attestation minting for that agent DID | The key as an authenticator on one account |
+| **Scope** | Every attested service at once | This one service only |
+| **Pulled by** | Whoever controls the link at the attestor | The claimed account **owner** |
+| **Reaches** | Only the attested path, within the freshness window | Every path, including pure signature-gated, immediately |
+
+Recovering a compromised key is an ordered runbook: revoke the binding (global), re-key + revoke at each service (local), then **re-link** the new DID — the same `sub_h` carries forward because it's keyed on the human, not the key. See [Revocation](/concepts/revocation) and [Recover a compromised key](/guides/recover-a-compromised-key).
+
+## Where AFAuth sits in the agent stack
+
+AFAuth is a **protocol, not a product**. It addresses **identity** — currently the gap — and composes with everything around it rather than replacing it.
+
+| Layer | Examples | AFAuth's role |
+|---|---|---|
+| Capability / transport | MCP, A2A | The AFAuth DID rides in MCP's CIMD URL and A2A Agent Card identity fields |
+| Authorization | OAuth `actor_token`, FIDO AP2, Visa Trusted Agent | An AFAuth signature serves as the `actor_token` and as the identity inside payment tokens |
+| **Identity** | **AFAuth** | **Self-sovereign agent identity for the open web — the gap the others delegate from** |
+
+## Show me the code
+
+The agent and service sides interoperate out of the box. Here is each, end to end — see the [agent quickstart](/quickstart-agent) and [service quickstart](/quickstart-service) for the full walkthroughs.
+
+<Tabs>
+
+<Tab title="Agent">
+```typescript
+import { Agent, TrustClient, fetchDiscovery } from "@afauthhq/agent";
+
+// 0 · a fresh identity (or Agent.fromPrivateKey)
+const agent = await Agent.generate();
+agent.did; // "did:key:z6Mk…"
+
+// 2 · read the service's discovery doc
+const disc = await fetchDiscovery("https://api.example.com");
+
+// 1 · link to a human (once) — surface link_url, poll
+const trust = new TrustClient({
+  agentDid: agent.did,
+  agentPublicKey: agent.publicKey,
+  agentPrivateKey: agent.exportPrivateKey(),
+});
+const link = await trust.linkStart({ label: "Atlas" });
+console.log(`Confirm: ${link.link_url}`);
+while (!(await trust.linkPoll(link.req_id)))
+  await new Promise((r) => setTimeout(r, 2000));
+
+// 3 · mint a per-service JWT
+const { jwt } = await trust.token(disc.service_did);
+
+// 4 · first signed request → implicit signup
+const signed = await agent.buildAccountIntrospection({
+  baseUrl: "https://api.example.com",
+});
+await fetch(signed.url, {
+  method: signed.method,
+  headers: { ...signed.headers, "AFAuth-Attestation": jwt },
+});
+```
+</Tab>
+
+<Tab title="Service">
+```typescript
+import {
+  defineService, consoleEmailHandler,
+  MemoryAccountStore, MemoryNonceStore, MemoryRevocationList,
+} from "@afauthhq/server";
+
+// attested_only + trustAttestor() are ON by default.
+const server = defineService({
+  baseUrl: "https://api.example.com",
+  serviceDid: "did:web:api.example.com",
+  accounts: new MemoryAccountStore(),       // swap for D1/KV/PG
+  nonceStore: new MemoryNonceStore(),
+  revocationList: new MemoryRevocationList(),
+  recipients: { email: consoleEmailHandler },
+  redirectAllowList: ["yourapp.com"],
+  // attestation: "off" | "optional" to change the default
+});
+
+export default {
+  async fetch(req) {
+    const { pathname } = new URL(req.url);
+    if (pathname === "/.well-known/afauth")
+      return server.handleDiscovery(req);
+    if (pathname === "/afauth/v1/accounts/me")
+      return server.handleAccountIntrospection(req); // ← implicit signup
+    if (pathname.endsWith("/owner-invitation"))
+      return server.handleOwnerInvitation(req);
+    // …keys/rotate, claim/<token> → handleClaimCompletion(req, session)
+    return new Response("not found", { status: 404 });
+  },
+};
+```
+</Tab>
+
+</Tabs>
+
+For Cloudflare Workers, `createWorker` from `@afauthhq/worker` routes all five endpoints and ships durable stores. The agent side has an identical-shaped CLI: `afauth init → trust link → signup → call`.
+
+## Further reading
+
+- [Why AFAuth](/concepts/why-afauth) — the argument, and where it sits in the stack.
+- [Identity and keys](/concepts/identity-and-keys) · [Signing requests](/concepts/signing) — the agent's credential and how requests are signed.
+- [Attestation](/concepts/attestation) · [The trust attestor](/concepts/trust-attestor) — spam-resistance without PII.
+- [The ceremony](/concepts/ceremony) · [Revocation](/concepts/revocation) — ownership and cutting an agent off.
+- [Spec §1–§14](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md) — the normative source of truth.
