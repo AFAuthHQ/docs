@@ -7,6 +7,18 @@ Existing auth assumes a human is the root of trust. Agents reach services either
 
 AFAuth takes the opposite stance. An **agent signs up on its own behalf**, identified by a cryptographic keypair it controls. If a human ever wants ownership, the agent invites them; the binding only takes effect once the human authenticates from the invited address. The agent continues to operate the account afterwards — but ownership-changing operations become privileged to the human.
 
+## How it works, in one minute
+
+1. **Generate an identity.** The agent makes an Ed25519 keypair; its `did:key` *is* its identity — verifiable offline, no registry, no DNS.
+2. **Link to a human, once.** The agent proves a real person stands behind it at the [trust attestor](https://trust.afauth.org) — carrying no PII. (Skippable for services that don't require it.)
+3. **Sign the first request.** A request signed per [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) *implicitly* creates the account in `UNCLAIMED` state — there's no separate signup call.
+4. **Operate freely.** Every later request is just signed; the agent is a first-class principal from request one.
+5. **Hand ownership to a human, optionally.** The agent invites a person; ownership commits only once they authenticate from the invited address.
+
+<Card title="How it works, end to end" icon="map" href="/concepts/how-it-works" horizontal>
+  The full mental model — the cast of roles and who talks to whom, the signed-request anatomy, the account lifecycle, the two human bindings, and end-to-end code.
+</Card>
+
 ## Two front doors
 
 <CardGroup cols={2}>
@@ -21,6 +33,14 @@ AFAuth takes the opposite stance. An **agent signs up on its own behalf**, ident
 <Note>
 The two front doors meet at the **trust attestor** ([trust.afauth.org](https://trust.afauth.org)). New services default to `attested_only` (spam-resistant), so an agent links to a human once at the trust attestor and presents a short-lived, PII-free JWT on each signed request. Agent-side: [Link your agent to a human](/guides/link-to-a-human); service-side: [Accept `afauth-trust`](/guides/accept-afauth-trust).
 </Note>
+
+## Where to next
+
+- New to the protocol? Read [How it works, end to end](/concepts/how-it-works), then [Why AFAuth](/concepts/why-afauth).
+- Want code first? Pick a quickstart above.
+- Operating a service and want to verify a request right now? Jump to [Verify a request](/sdk/typescript/server/overview) or copy [`examples/recipes/verify.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts).
+
+---
 
 ## Where the protocol lives
 
@@ -46,10 +66,4 @@ Alternative implementations are welcome. The protocol is small and language-agno
 
 ## Status
 
-**Spec v0.1.** Reference implementations pass the conformance harness against the v0.1 vectors. The reference SDK ships on npm as [`@afauthhq/{server,worker}@0.5.0`, `@afauthhq/agent@0.4.0`, `@afauthhq/core@0.2.0`](https://www.npmjs.com/org/afauthhq) — including the AFAP-0006 `TrustClient` + `trustAttestor()` surface, the `defineService` factory that wires `attested_only` + `trustAttestor()` by default, the keyless (signature-only) trust mint (§3.1), and multi-agent accounts (§10.4.4). The reference CLI ships as [`afauthhq/cli@v0.6.0`](https://github.com/AFAuthHQ/cli/releases) with the `afauth trust` subcommand; `afauth signup` auto-mints attestations when a service requires them (Homebrew + `install.sh` + Go install all live).
-
-## Where to next
-
-- New to the protocol? Read [Why AFAuth](/concepts/why-afauth) and [The ceremony](/concepts/ceremony).
-- Want code first? Pick a quickstart above.
-- Operating a service and want to verify a request right now? Jump to [Verify a request](/sdk/typescript/server/overview) or copy [`examples/recipes/verify.ts`](https://github.com/AFAuthHQ/typescript-sdk/blob/main/examples/recipes/verify.ts).
+**Spec v0.1 — stable.** The reference [TypeScript SDK](https://www.npmjs.com/org/afauthhq) (npm), [Go CLI](https://github.com/AFAuthHQ/cli/releases) (Homebrew + `install.sh` + `go install`), trust attestor, and registry all pass the conformance harness against the v0.1 vectors. See the [changelog](/changelog/overview) for what ships in each release.
