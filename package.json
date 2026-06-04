@@ -2,7 +2,7 @@
   "name": "afauth-docs",
   "version": "0.1.0",
   "private": true,
-  "description": "Documentation for the AFAuth Protocol — docs.afauth.org",
+  "description": "Documentation for the AFAuth protocol — docs.afauth.org",
   "scripts": {
     "dev": "mint dev",
     "validate": "mint validate",
