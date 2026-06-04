@@ -11,7 +11,7 @@ For a step-by-step walkthrough see [Build an agent (CLI)](/guides/build-an-agent
 
 ```bash
 afauth init                                               # 1. generate the agent's did:key identity
-afauth trust link                                         # 2. link to a human (one-time, ~90 days)
+afauth trust link                                         # 2. link to a human (one-time; stays live while in use)
 afauth signup https://api.example.com                     # 3. sign up — auto-mints an attestation if required
 afauth call https://api.example.com/afauth/v1/accounts/me # 4. signed requests thereafter
 ```

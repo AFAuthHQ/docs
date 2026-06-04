@@ -54,7 +54,7 @@ From a freshly generated keypair to a human-owned account, in the order it actua
 </Step>
 
 <Step title="Link to a human, once — Agent + Human + Trust attestor">
-Most services reject anonymous signups (the next steps explain why). To become acceptable, the agent opens a link request at `trust.afauth.org`, surfaces a deep link, and a human signs in and confirms it. The result is a **binding** between this agent DID and that human — carrying **no ownership** and creating **no service account**. The binding lasts ~90 days. The mint is keyless: the agent later signs each token request with its own key, so there's no bearer secret to store. See [Link your agent to a human](/guides/link-to-a-human).
+Most services reject anonymous signups (the next steps explain why). To become acceptable, the agent opens a link request at `trust.afauth.org`, surfaces a deep link, and a human signs in and confirms it. The result is a **binding** between this agent DID and that human — carrying **no ownership** and creating **no service account**. The binding stays valid as long as the agent keeps minting — it only lapses after ~90 days of inactivity. The mint is keyless: the agent later signs each token request with its own key, so there's no bearer secret to store. See [Link your agent to a human](/guides/link-to-a-human).
 </Step>
 
 <Step title="Discover the service — Agent + Service">

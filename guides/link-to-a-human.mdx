@@ -21,7 +21,7 @@ The agent never authenticates the human — the trust attestor does. The flow is
 2. **Human → Trust (browser):** sign in at `trust.afauth.org`, confirm the request.
 3. **Agent ↔ Trust:** poll until confirmed, then mint short-lived per-service JWTs as needed — each signed with the agent key, no bearer token.
 
-You do this **once** per human/agent pair — the binding persists (90 days by default). Each per-service JWT is fresh, audience-bound, and ≤ 900 s lived.
+You do this **once** per human/agent pair — the binding persists as long as the agent keeps minting (it lapses only after ~90 days of inactivity). Each per-service JWT is fresh, audience-bound, and ≤ 900 s lived.
 
 ## Before you start
 
@@ -98,7 +98,7 @@ while (!(binding = await trust.linkPoll(start.req_id))) {
 // signed with it. Persist the keypair securely (encrypted at rest).
 ```
 
-There is no bearer token to keep — the agent authenticates each mint by signing the request with its account key (treat that key like an API key: encrypted at rest, never logged). The binding is long-lived (90 days by default); the human can revoke it from `trust.afauth.org/account`.
+There is no bearer token to keep — the agent authenticates each mint by signing the request with its account key (treat that key like an API key: encrypted at rest, never logged). The binding is long-lived — it refreshes on every mint and lapses only after ~90 days of inactivity; the human can revoke it from `trust.afauth.org/account`.
 
 If you persist the binding and want to skip the link dance on the next run, restore it on construction:
 
@@ -156,7 +156,7 @@ try {
   // ...
 } catch (e) {
   if (e instanceof TrustHttpError) {
-    if (e.isBindingExpired())       return restartLinkFlow();    // 90+ days old
+    if (e.isBindingExpired())       return restartLinkFlow();    // ~90 days idle
     if (e.isBindingRevoked())       return askHumanToReLink();   // human revoked
     if (e.isVerificationRequired()) return sendHumanToAccount(); // no verification methods
   }
