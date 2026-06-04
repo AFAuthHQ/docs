@@ -5,7 +5,7 @@ description: "The whole arc in one place: an agent generates a keypair, proves a
 
 Every auth system in wide use today assumes a human is the root of trust. AFAuth inverts that: an **agent is a first-class principal from its first request**, identified by a keypair it generates itself. This page is the connective map — identity, signed requests, spam-resistance, and the handoff of ownership to a human — with links into the deep-dive concept pages for each piece.
 
-For the *argument* (why invert, where AFAuth sits in the stack, when not to use it), see [Why AFAuth](/concepts/why-afauth). This page is the *mechanics*.
+For the *argument* (why invert, where AFAuth sits in the stack, when not to use it), see [Why AFAuth](/why-afauth). This page is the *mechanics*.
 
 <Warning>
 **The invariant everything hangs on.** The agent's signature alone MUST NOT bind ownership. A stolen agent key can do many things, but it can never quietly make an attacker the owner — because ownership requires a second, human authentication the key cannot forge. Hold onto this; it explains most of the design.
@@ -259,7 +259,7 @@ For Cloudflare Workers, `createWorker` from `@afauthhq/worker` routes all five e
 
 ## Further reading
 
-- [Why AFAuth](/concepts/why-afauth) — the argument, and where it sits in the stack.
+- [Why AFAuth](/why-afauth) — the argument, and where it sits in the stack.
 - [Identity and keys](/concepts/identity-and-keys) · [Signing requests](/concepts/signing) — the agent's credential and how requests are signed.
 - [Attestation](/concepts/attestation) · [The trust attestor](/concepts/trust-attestor) — spam-resistance without PII.
 - [The ceremony](/concepts/ceremony) · [Revocation](/concepts/revocation) — ownership and cutting an agent off.

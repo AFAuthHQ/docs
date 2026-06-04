@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "AFAuth Protocol",
+  "name": "AFAuth",
   "description": "Agent-First Auth — the open protocol that makes AI agents first-class citizens of every service.",
   "colors": {
     "primary": "#0066FF",
@@ -16,7 +16,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": ["introduction"]
+            "pages": ["introduction", "how-it-works", "why-afauth"]
           },
           {
             "group": "Equip your coding agent",
@@ -34,8 +34,6 @@
           {
             "group": "Concepts",
             "pages": [
-              "concepts/how-it-works",
-              "concepts/why-afauth",
               "concepts/security-model",
               "concepts/identity-and-keys",
               "concepts/signing",
@@ -166,6 +164,18 @@
       }
     ]
   },
+  "redirects": [
+    {
+      "source": "/concepts/how-it-works",
+      "destination": "/how-it-works",
+      "permanent": true
+    },
+    {
+      "source": "/concepts/why-afauth",
+      "destination": "/why-afauth",
+      "permanent": true
+    }
+  ],
   "navbar": {
     "links": [
       {
