@@ -21,20 +21,25 @@
           {
             "group": "Quickstart",
             "pages": ["quickstart-agent", "quickstart-service"]
-          },
+          }
+        ]
+      },
+      {
+        "tab": "Concepts",
+        "groups": [
           {
             "group": "Concepts",
             "pages": [
               "concepts/how-it-works",
               "concepts/why-afauth",
               "concepts/identity-and-keys",
-              "concepts/ceremony",
+              "concepts/signing",
               "concepts/attestation",
               "concepts/trust-attestor",
+              "concepts/ceremony",
               "concepts/revocation",
-              "concepts/signing",
-              "concepts/error-envelope",
-              "concepts/service-directory"
+              "concepts/service-directory",
+              "concepts/error-envelope"
             ]
           }
         ]
@@ -69,7 +74,7 @@
         ]
       },
       {
-        "tab": "SDK",
+        "tab": "SDK & CLI",
         "groups": [
           {
             "group": "TypeScript",
@@ -93,29 +98,27 @@
                 "pages": ["sdk/typescript/worker/overview"]
               }
             ]
-          }
-        ]
-      },
-      {
-        "tab": "CLI",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["cli/overview", "cli/install"]
           },
           {
-            "group": "Commands",
+            "group": "CLI",
             "pages": [
-              "cli/commands/init",
-              "cli/commands/whoami",
-              "cli/commands/status",
-              "cli/commands/discover",
-              "cli/commands/call",
-              "cli/commands/trust",
-              "cli/commands/signup",
-              "cli/commands/invite",
-              "cli/commands/accounts",
-              "cli/commands/keys"
+              "cli/overview",
+              "cli/install",
+              {
+                "group": "Commands",
+                "pages": [
+                  "cli/commands/init",
+                  "cli/commands/whoami",
+                  "cli/commands/status",
+                  "cli/commands/discover",
+                  "cli/commands/call",
+                  "cli/commands/trust",
+                  "cli/commands/signup",
+                  "cli/commands/invite",
+                  "cli/commands/accounts",
+                  "cli/commands/keys"
+                ]
+              }
             ]
           }
         ]
@@ -131,6 +134,15 @@
               "spec/well-known",
               "spec/test-vectors"
             ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/well-known-afauth",
+              "reference/error-codes",
+              "reference/registry-api",
+              "reference/trust-api"
+            ]
           }
         ]
       },
@@ -140,20 +152,6 @@
           {
             "group": "Changelog",
             "pages": ["changelog/overview"]
-          }
-        ]
-      },
-      {
-        "tab": "Reference",
-        "groups": [
-          {
-            "group": "Reference",
-            "pages": [
-              "reference/well-known-afauth",
-              "reference/error-codes",
-              "reference/registry-api",
-              "reference/trust-api"
-            ]
           }
         ]
       }
