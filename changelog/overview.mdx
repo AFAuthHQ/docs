@@ -3,6 +3,16 @@ title: "Changelog"
 description: "What's new in AFAuth across the spec, SDKs, and CLI."
 ---
 
+<Update label="June 4, 2026" description="Week of May 30 – June 5">
+
+## Changes
+
+**Unclaimed accounts never expire by default**
+
+`unclaimed_ttl_seconds` is now optional and **off by default**: an agent operates its account indefinitely whether or not a human ever claims it, and the `EXPIRED` state is opt-in — reached only when a service deliberately advertises a TTL to garbage-collect abandoned accounts or to meet a data-retention mandate. The spec (§4.4, §6.1, §7.3, Appendix A) reframes expiry as opt-in and warns against setting a TTL on the reflex that "inactive accounts should be reaped" — an AFAuth account is bound to a key its agent holds, not to a human who may have wandered off. In the TypeScript SDK, `sweepExpiredAccounts` treats `unclaimedTtlSeconds` as optional and is a no-op when omitted; the published `.well-known` schema raises the TTL floor to 3600s for services that do opt in. See the [account lifecycle](/concepts/ceremony) and the [`.well-known/afauth` reference](/reference/well-known-afauth).
+
+</Update>
+
 <Update label="June 3, 2026" description="Week of May 30 – June 5">
 
 ## New features

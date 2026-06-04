@@ -25,7 +25,7 @@ A default agent does **both**: it links to a human (to reach an `attested_only` 
 | `UNCLAIMED` | Account exists. No owner is bound. Created by signup. |
 | `INVITED` | An owner invitation is pending. Not yet claimed. |
 | `CLAIMED` | Account is bound to an owner. |
-| `EXPIRED` | Unclaimed for too long (`unclaimed_ttl_seconds`). No longer operable. |
+| `EXPIRED` | Only when the service opts into an `unclaimed_ttl_seconds` limit and the account exceeds it unclaimed. No longer operable. Absent by default — accounts then never expire. |
 | `ARCHIVED` | Explicitly deleted by the owner. Retained for audit. |
 
 Transitions are enumerated in [Appendix A of the spec](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#appendix-a-state-machine). Conforming services MUST NOT permit any others.

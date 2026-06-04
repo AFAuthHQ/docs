@@ -26,7 +26,6 @@ The normative JSON Schema is [`AFAuthHQ/spec/schemas/well-known.json`](https://g
   "features": ["attestation", "key_rotation", "attested_session"],
   "recipient_types": ["email"],
   "limits": {
-    "unclaimed_ttl_seconds": 2592000,
     "unclaimed_rate_limit_per_hour": 100
   },
   "billing": {
@@ -63,7 +62,7 @@ Endpoint values are paths relative to the service host, except `claim_page`, whi
 |---|---|---|
 | `features`        | string[] | Optional capabilities. Allowed values: `"attestation"`, `"key_rotation"`, `"attested_session"` (the service maintains §10.7 attested sessions — periodic re-presentation). Two-step invite is mandatory in v0.1 and is **not** advertised here. |
 | `recipient_types` | string[] | Recipient types accepted on the owner-invitation endpoint. Allowed: `"email"`, `"phone"`, `"oidc"`, `"did"`. **Absent means email-only.** |
-| `limits`          | object   | `unclaimed_ttl_seconds` (integer ≥ 0) and `unclaimed_rate_limit_per_hour` (integer ≥ 0). |
+| `limits`          | object   | `unclaimed_rate_limit_per_hour` (integer ≥ 0), plus the optional `unclaimed_ttl_seconds` (integer ≥ 3600). **Omit `unclaimed_ttl_seconds` for no expiry — the default and recommended posture;** set it only to garbage-collect abandoned accounts or meet a retention mandate (§4.4). |
 | `billing`         | object   | Requires `unclaimed_mode` ∈ `"free"` / `"attested_only"` / `"denied"`. Optional `accepted_attestors` (string[]) names the attestor `iss` values the service trusts, e.g. `["afauth-trust"]`. |
 | `x402`            | object   | Opt-in advertisement of [x402](https://github.com/AFAuthHQ/spec/blob/main/proposals/0004-x402-binding.md) (HTTP 402) payment acceptance. Requires `facilitator`, `networks`, `assets`, `payment_endpoint`. |
 

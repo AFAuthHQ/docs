@@ -123,7 +123,7 @@ An account is in exactly one of five states. A service-local, opaque `account_id
        EXPIRED                           EXPIRED                       ARCHIVED
 ```
 
-Only the transitions drawn here are legal; a conforming service must reject any other. Note the one path *back*: an expired invitation returns the account to `UNCLAIMED`, not forward to `CLAIMED`. The full state table and transition rules live in [The ceremony](/concepts/ceremony).
+Only the transitions drawn here are legal; a conforming service must reject any other. The two `EXPIRED` transitions are opt-in — they fire only when the service advertises an `unclaimed_ttl_seconds` limit; by default accounts never expire and an `UNCLAIMED` account stays operable indefinitely. Note the one path *back*: an expired invitation returns the account to `UNCLAIMED`, not forward to `CLAIMED`. The full state table and transition rules live in [The ceremony](/concepts/ceremony).
 
 ## The two human bindings (don't conflate them)
 

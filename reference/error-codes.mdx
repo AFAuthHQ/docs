@@ -24,7 +24,7 @@ Every reserved code, its HTTP status, the spec section that triggers it, and a o
 | `unknown_account` | `404` | Account does not exist, and implicit signup is disabled | §6.4 | Use `POST /accounts` to explicitly sign up |
 | `invitation_not_found` | `404`<sup>†</sup> | Claim token doesn't match a pending invitation | §7.4 | Stop — invitation is gone |
 | `invitation_expired` | `410` | Invitation TTL exceeded, or atomically replaced by a newer one | §7.3 | Send a fresh invitation |
-| `account_expired` | `410` | Account exceeded `unclaimed_ttl_seconds` without being claimed | §6.1 | Onboard a fresh agent |
+| `account_expired` | `410` | Account exceeded a service-set `unclaimed_ttl_seconds` without being claimed (opt-in; most services set no TTL) | §6.1 | Onboard a fresh agent |
 | `already_claimed` | `409` | Operation requires `UNCLAIMED` / `INVITED` state but account is already `CLAIMED` | §11.2 | Stop — claim has already happened |
 | `not_claimed` | `409` | Operation requires `CLAIMED` state but account isn't claimed yet | §11.2 | Send an owner invitation first |
 | `owner_authentication_required` | `401` · `403` | `401` when no owner session is presented for an owner-binding op (re-key §8.2 / revoke §8.4); `403` when a session is present but doesn't own the target account, or a claim identity fails the match relation (§7.4) | §7.4, §8.2, §8.4 | Authenticate the owner (fresh session) and retry |
