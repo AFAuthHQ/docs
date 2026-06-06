@@ -24,7 +24,7 @@
           },
           {
             "group": "Quickstart",
-            "pages": ["quickstart-agent", "quickstart-service"]
+            "pages": ["quickstart-agent", "quickstart-service", "ship-afauth-in-your-cli"]
           }
         ]
       },
