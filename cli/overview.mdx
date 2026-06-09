@@ -56,7 +56,7 @@ Most services run `attested_only`, so you link to a human **once**; after that, 
 
 The CLI keeps everything under `~/.afauth/` (overridable with `$AFAUTH_HOME`):
 
-- `key.json` — the agent's keypair, the sole credential for pre-claim operations. Back it up with `afauth keys export`.
+- `key.json` — the agent's keypair, the sole credential for pre-claim operations. Back it up with `afauth keys export --out <file>`.
 - `trust.json` — the human-link binding (chmod 600).
 
 Every command takes `--help` for the authoritative flags on your installed version.

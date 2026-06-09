@@ -31,7 +31,7 @@ Generates an Ed25519 keypair and writes it to `~/.afauth/key.json`. The `did:key
 afauth whoami        # did:key:z6Mk...
 ```
 
-That private key is the sole credential for everything the agent does before an account is claimed. Treat it like an API key: back it up (`afauth keys export`), never commit it.
+That private key is the sole credential for everything the agent does before an account is claimed. Treat it like an API key: back it up (`afauth keys export --out backup.json`), never commit it.
 
 </Step>
 
