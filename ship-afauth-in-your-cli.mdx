@@ -1,33 +1,27 @@
 ---
 title: "Ship AFAuth in your CLI"
-description: "Distribute a CLI or client that signs your users up agent-natively — no email, OTP, or browser OAuth — by embedding the AFAuth agent role."
+description: "Distribute a CLI or client that provisions an agent-native identity for your users — its own keypair, no portal account — by embedding the AFAuth agent role."
 ---
 
-You run a service, and you ship a **CLI** (or a language SDK, or a desktop app) that your users — and increasingly their coding agents — run locally. This page is how that client signs users up *on its own*, with a cryptographic identity, instead of gating first use behind an email + OTP + browser session.
+You run a service, and you ship a **CLI** (or a language SDK, or a desktop app) that your users — and increasingly their coding agents — run locally. This page is how that client provisions an identity *on its own*, with a cryptographic keypair, instead of gating first use behind an email + OTP + browser session.
 
-It's the **client half**. Your backend accepts AFAuth-signed requests already — if not, start at [Accept AFAuth](/quickstart-service) — and here you give the CLI you distribute an AFAuth identity so it can provision against that backend with no human bottleneck.
+It's the **client half**. Your backend accepts AFAuth-signed requests already — if not, start at [Accept AFAuth](/quickstart-service) — and here you give the CLI you distribute an AFAuth identity so it can provision against that backend with no shared password and no portal to automate.
 
 <Note>
-**Which front door is this?** [Build an agent](/quickstart-agent) is for a *roaming* agent product that signs up to other people's services. [Accept AFAuth](/quickstart-service) is your *backend*. [Run a coding agent](/equip-your-agent) is an end user equipping Claude Code with the `afauth` CLI. **This page is where two of those roles fuse:** a service that distributes a client is *both* agent and service — your CLI consumes the agent SDK, your server consumes the server SDK.
+**Which front door is this?** [Build an agent](/quickstart-agent) is for a *roaming* agent product. [Accept AFAuth](/quickstart-service) is your *backend*. [Run a coding agent](/equip-your-agent) is an end user equipping Claude Code. **This page is where two roles fuse:** a service that distributes a client is *both* agent and service — your CLI consumes the agent SDK, your server consumes the server SDK.
 </Note>
 
 ## The shape
 
-Your CLI plays the **agent role** against your **own** backend. The user types *your* brand — `acme signup`, `acme deploy` — and AFAuth stays invisible plumbing underneath. Three verbs cover it:
-
-```bash
-acme whoami                                       # this machine's agent identity
-acme signup https://api.acme.dev                  # provision — self-links if attested_only
-acme claim  https://api.acme.dev you@example.com  # deferred human ownership (optional)
-```
-
-It's all `@afauthhq/agent` plus its Node persistence entry:
+Your CLI plays the **agent role** against your **own** backend. The user types *your* product's verbs — `acme deploy`, `acme login` — and AFAuth stays invisible plumbing: the client holds a `did:key` and signs each request. One call provisions it, and `@afauthhq/agent`'s `signup()` **adapts to whatever attestation mode your service advertises** — so the same client code works whether or not you gate signup.
 
 ```bash
 npm i @afauthhq/agent
 ```
 
 ## Provision in one call
+
+`signup()` fetches your discovery doc, links to a human **only if** your service is `attested_only` (and only the first time on a machine), then sends the signed implicit-signup request and returns the binding to persist.
 
 <Steps>
 
@@ -39,11 +33,11 @@ import { loadOrCreateAgent, loadBinding, saveBinding } from "@afauthhq/agent/nod
 const { agent } = await loadOrCreateAgent(); // reads the shared ~/.afauth/key.json
 ```
 
-`loadOrCreateAgent()` reads the shared **agent home**, so if the user already ran `afauth init` (or any other AFAuth-aware tool), you reuse that identity — and the human link that came with it. The user links **once, ever**, across every AFAuth service. Pass an explicit path to scope the key to your own tool instead.
+`loadOrCreateAgent()` reads the shared **agent home**, so if the user already ran `afauth init` (or any other AFAuth-aware tool), you reuse that identity — and any human link it already has. The user links at most **once, ever**, across every AFAuth service.
 
 </Step>
 
-<Step title="Sign up — the human link is the only interactive step">
+<Step title="Sign up">
 
 ```ts
 import { signup } from "@afauthhq/agent";
@@ -56,8 +50,9 @@ const result = await signup({
   binding: existing,
   label: "acme-cli",
   onLink: (url) => {
-    console.error("Approve this agent once — you, in a browser:");
-    console.error("  " + url);
+    // Fires ONLY when your service is attested_only and this machine isn't
+    // linked yet — the one-time human approval. Under `optional`, never called.
+    console.error("Approve this agent once — you, in a browser:\n  " + url);
   },
 });
 
@@ -67,7 +62,7 @@ if (result.binding && result.binding !== existing) {
 }
 ```
 
-`signup()` fetches discovery, and when your service is `attested_only` and the machine isn't linked yet, calls `onLink` with the [trust attestor](https://trust.afauth.org) URL and waits for the human to confirm. The first signed request then provisions the account on your backend (there's no separate create call).
+The first signed request provisions the account on your backend — there's no separate create call. `signup()` is mode-agnostic: against an `optional` service `onLink` never fires; against `attested_only` it fires once, then the saved binding is reused.
 
 </Step>
 
@@ -81,45 +76,77 @@ const signed = await agent.buildOwnerInvitation({
 await fetch(signed.url, { method: signed.method, headers: signed.headers, body: signed.body });
 ```
 
-The account runs unclaimed until a human claims it; the agent's signature alone can never bind ownership — the human must authenticate from the invited address.
+The account runs unclaimed until a human claims it; the agent's signature alone can never bind ownership.
 
 </Step>
 
 </Steps>
 
-A full, runnable version is [`examples/cli`](https://github.com/AFAuthHQ/typescript-sdk/tree/main/examples/cli).
+A full, runnable version is [`examples/cli`](https://github.com/AFAuthHQ/typescript-sdk/tree/main/examples/cli); [artidrop](https://artidrop.ai)'s CLI is a live, deployed example.
 
-## Two decisions
+## Pick your attestation mode
 
-**Shared vs. service-scoped identity.** Reusing `~/.afauth/` (the default) gives one identity and one human link across every AFAuth service — the strongest "no bottleneck," and a power user's `afauth trust link` flows straight through to your CLI. If you'd rather your CLI hold its own key, pass an explicit path to the `@afauthhq/agent/node` helpers. Both are first-class; the files follow the [agent-home storage contract](https://github.com/AFAuthHQ/spec/blob/main/spec/storage.md), so they interoperate either way.
+This is the one decision that shapes the user experience — and it's **yours to make by economics**. Both modes are first-class:
 
-**Pure-AFAuth vs. your own key.** If your backend verifies signatures on its business routes, your CLI can just keep signing requests — no API key at all. Or, on the back of the verified signup, mint your existing native key (`acme_…`) and use it for your data plane. AFAuth gates *identity, signup, and claim*; it doesn't dictate your API auth.
+- **`attested_only`** — a human links once at the trust attestor before the agent gets anything. Choose it when your **free tier is expensive** (compute, storage, inference — anything costly you give away per user): you want a real person on the hook before granting it, so a flood of throwaway keys can't drain you. The CLI's first signup then includes the one-time `onLink` approval (reused across every AFAuth service thereafter).
+- **`optional`** — the agent signs up with just its key: no attestor, no browser. Choose it when **free resources are cheap** and content moderation + graded rate limits are enough anti-abuse. You can *grade trust* — give unclaimed keys a lower quota/rate than claimed, human-owned accounts.
+
+`signup()` handles both, so your CLI code is identical either way — only whether `onLink` fires changes. The mode is a server-side switch; see [Accept AFAuth](/quickstart-service) and [Attestation](/concepts/attestation).
+
+## The login ladder — and no merge
+
+A distributed client usually wants three tiers, and the cleanest mental model is a ladder the user climbs only when they want more:
+
+| Tier | How | What it is |
+|---|---|---|
+| Throwaway | `acme publish --anonymous` | keyless, unlinkable; can't be managed |
+| Guest / agent | default (`optional`) or after the one-time link (`attested_only`) | a real identity that owns and manages its own work |
+| Account | `acme login` | a human-owned account: dashboard, recovery, cross-device |
+
+Make `login` the **single** account verb, and have it fork:
+
+- **Claim** — turn the current identity into an account *in place* (your existing owner-invitation/claim ceremony). Keeps everything.
+- **Sign in to an existing account** — switch this machine to it. The identity's prior work **stays with the key** — it is **not** merged.
+
+**Don't build account-merge.** Every system that tried regrets it — [Firebase Anonymous Auth](https://firebase.google.com/docs/auth/web/anonymous-auth) throws `credential-already-in-use` and refuses; consumer apps warn "guest progress may not transfer." Your claim ceremony already enforces this: claiming into an email that already has an account returns a 409 — that *is* the guard. Make the user choose at the fork; don't reconcile two pools of data.
 
 ## Don't rebrand the plumbing
 
-Your user knows *your* product, not AFAuth. So:
+The user knows *your* product, not AFAuth:
 
-- The command is `acme signup` (or fold it into `acme deploy`) — **never** `afauth init`. Sending a user to a second, unfamiliar tool is friction at the worst moment, before their first success.
-- Don't mirror AFAuth's subcommands (`acme trust link`, `acme trust status`, …). Fold linking into an idempotent `acme signup`/`init` and route a lapsed link back there with a plain-language message. The user's vocabulary stays at *your* verbs.
-- Say "AFAuth" at most once, as reassurance ("uses AFAuth, an open agent-identity standard"). The one unavoidable AFAuth-branded moment is the trust attestor's approval page in `onLink` — pass a clear `label` so it shows what's being linked.
+- The account verb is `acme login` (or fold it into your flow) — **never** `afauth init`. Sending a user to a second, unfamiliar tool is friction at the worst moment.
+- Don't mirror AFAuth's subcommands (`acme trust link`, …). Fold the human step into `login`/`signup`; the user's vocabulary stays at *your* verbs.
+- Name "AFAuth" at most once, as reassurance. The one unavoidable AFAuth-branded moment is the trust attestor's approval page — and only for `attested_only` services. Pass a clear `label` so it shows what's being linked.
 
-<Note>
-Power users who *do* know AFAuth are already served for free: because you reuse the shared `~/.afauth/`, `afauth trust status`, `afauth trust forget`, and friends operate on your CLI's identity with no extra surface from you.
-</Note>
+Power users who know AFAuth are served for free: because you reuse the shared `~/.afauth/`, `afauth trust status` / `forget` operate on your CLI's identity with no extra surface from you.
+
+## Notes & gotchas
+
+- **Pin `@afauthhq/agent@^0.6.1`.** (0.6.0 fails to load on a clean install — it re-exported a helper from a `@afauthhq/core` that hadn't shipped it.)
+- **Signing multipart uploads:** `fetch` serializes a `FormData` with a boundary you can't see up front, so a pre-computed Content-Digest won't match. Serialize it yourself first, then sign over the bytes:
+  ```ts
+  const probe = new Request(url, { method, body: formData });
+  const bytes = new Uint8Array(await probe.arrayBuffer());
+  const headers = await agent.signRequest({ method, url, body: bytes });
+  await fetch(url, { method, headers, body: bytes }); // + probe.headers.get("content-type")
+  ```
+  Signing JSON bodies needs none of this — pass the JSON string straight to `signRequest`.
+- **Auth resolution** in your request layer: an explicit key → bearer; else a stored/env key → bearer; else sign with the did:key; `--anonymous` → no auth.
+- **Tests:** point `$AFAUTH_HOME` at a temp dir so signing never touches a developer's real `~/.afauth`.
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Accept AFAuth on your service" icon="server" href="/quickstart-service">
-    The backend half — verify signed requests and host the claim page.
+    The backend half — verify signed requests, host the claim page, pick your attestation mode.
   </Card>
   <Card title="@afauthhq/agent" icon="cube" href="/sdk/typescript/agent/overview">
-    The full agent SDK surface, including the `/node` persistence helpers and `signup()`.
+    `signup()`, the `/node` persistence helpers, and the signing surface.
   </Card>
-  <Card title="Link your agent to a human" icon="link" href="/guides/link-to-a-human">
-    What the one-time trust link proves — and what it keeps private.
+  <Card title="Attestation" icon="shield-check" href="/concepts/attestation">
+    `attested_only` vs `optional` + graded trust — and when each fits.
   </Card>
   <Card title="Invite and claim" icon="user-check" href="/guides/invite-and-claim">
-    The deferred human-ownership ceremony your `claim` command drives.
+    The deferred human-ownership ceremony your `login` claim path drives.
   </Card>
 </CardGroup>
