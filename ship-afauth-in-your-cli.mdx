@@ -110,6 +110,28 @@ Make `login` the **single** account verb, and have it fork:
 
 **Don't build account-merge.** Every system that tried regrets it — [Firebase Anonymous Auth](https://firebase.google.com/docs/auth/web/anonymous-auth) throws `credential-already-in-use` and refuses; consumer apps warn "guest progress may not transfer." Your claim ceremony already enforces this: claiming into an email that already has an account returns a 409 — that *is* the guard. Make the user choose at the fork; don't reconcile two pools of data.
 
+## Logout: go dormant, don't delete
+
+The ladder has a step down that most clients get wrong. What should `acme logout` do to a **self-provisioned** identity?
+
+The wrong answer is `rm ~/.afauth/key.json`. That key is **shared** across every AFAuth-aware tool on the machine, and it **owns** the guest's work — delete it and you orphan their artifacts *and* sign their other tools out. Logging out is about no longer *using* an identity, not *destroying* it. **Possession ≠ use.**
+
+So make `logout` write a **dormant marker**, not erase anything:
+
+- Drop any stored bearer key and persist a `signed_out` flag. The client now resolves to **anonymous** — it signs nothing — until an explicit `login`.
+- Leave `~/.afauth/` untouched. `acme login --afauth` lifts the marker and the same did:key is active again, intact, still owning its artifacts.
+
+Resolution becomes a short, ordered ladder:
+
+| Order | Resolves to | Trigger |
+|---|---|---|
+| 1 | anonymous | `--anonymous` (per-call escape hatch) |
+| 2 | bearer | explicit key arg → `$ACME_API_KEY` → stored key |
+| 3 | anonymous | sticky `logout` marker |
+| 4 | afauth | default — sign as the did:key |
+
+Bearer sits **above** the logout marker on purpose: an env key in CI must still authenticate even on a box where someone ran `logout`. For the same reason, when `logout` runs with `$ACME_API_KEY` set, *say so* — you can't unset their environment, and that key keeps forcing bearer auth until they do.
+
 ## Don't rebrand the plumbing
 
 The user knows *your* product, not AFAuth:
