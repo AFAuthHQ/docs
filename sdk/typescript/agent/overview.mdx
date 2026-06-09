@@ -45,6 +45,34 @@ await fetch(signed.url, {
 
 Against a `unclaimed_mode: "free"` service the link/mint steps are unnecessary — a bare signed request suffices. Full walkthrough: [Link your agent to a human](/guides/link-to-a-human) and the [Trust API reference](/reference/trust-api).
 
+## One call: `signup()` + the shared agent home
+
+`signup()` collapses the flow above into one call — discover, link to a human only if the service is `attested_only` *and* the agent isn't linked yet, then send the signed implicit-signup request:
+
+```typescript
+import { signup } from "@afauthhq/agent";
+
+const result = await signup({
+  agent,
+  baseUrl: "https://api.example.com",
+  onLink: (url) => console.error(`Approve once: ${url}`), // fires only under attested_only
+});
+// → { account, discovery, binding } — persist result.binding for reuse
+```
+
+It's **mode-adaptive**: against an `optional` service `onLink` never fires and the agent signs up with just its key. This is the call a [service-distributed CLI](/ship-afauth-in-your-cli) builds on.
+
+For Node clients, **`@afauthhq/agent/node`** persists the shared agent home (`~/.afauth`, honouring `$AFAUTH_HOME`) so a human links once across every AFAuth tool on the machine — in the same on-disk format the `afauth` CLI uses:
+
+- `loadOrCreateAgent()` / `loadAgent` / `saveAgent` — the `did:key` keypair (`key.json`).
+- `loadBinding` / `saveBinding` — trust-attestor bindings (`trust.json`).
+
+```typescript
+import { loadOrCreateAgent } from "@afauthhq/agent/node";
+
+const { agent } = await loadOrCreateAgent(); // reuse the machine's identity, or create one
+```
+
 ## Keeping access live (§10.7)
 
 For ongoing requests to an attested-session service, `AttestedFetcher` runs the refresh-on-challenge loop for you — it signs each request and, on `401 attestation_required`, mints a fresh attestation (via `TrustClient`) and retries once:

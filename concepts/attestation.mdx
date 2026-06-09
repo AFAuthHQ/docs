@@ -19,8 +19,12 @@ For new integrations, attestation is **on by default**. The
 [`defineService`](/sdk/typescript/server/overview) factory in
 `@afauthhq/server` sets `unclaimed_mode: "attested_only"` and wires
 `trustAttestor()` automatically. Pass `attestation: "off"` to opt out
-for read-only or paid-only services, or `"optional"` for a migration
-path. See [the service quickstart](/quickstart-service).
+for read-only or paid-only services, or `"optional"` when your free tier
+is cheap enough that moderation + graded limits are enough anti-abuse
+(un-attested signups are allowed; a presented attestation still
+validates). Which mode fits is an economic call — see [When you
+want attestation](#when-you-want-attestation). See [the service
+quickstart](/quickstart-service).
 </Note>
 
 Attestation has **two default sides** that must line up. The service turns `attested_only` on (the `defineService` default, above). The agent links to a human once — [`afauth trust link`](/guides/link-to-a-human) — and then mints a fresh per-request attestation: [`afauth signup`](/cli/commands/signup) reads the service's `attested_only` flag and auto-mints. A default agent that has never linked can't sign up to a default service, so linking is part of the standard agent journey, not an advanced step.
