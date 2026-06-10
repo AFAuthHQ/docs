@@ -141,6 +141,10 @@ This is the single most confusing thing about AFAuth, so it gets called out ever
 
 Mnemonic: **linking** answers "is a real person behind this bot?" (asked by the service, answered by the attestor, no PII). **Claiming** answers "who *owns* this account?" (answered by the human authenticating directly to the service).
 
+<Note>
+**A third relationship: human sign-in.** Linking and claiming are agent-initiated. There is also a *human*-initiated path — **[Sign in with AFAuth](/concepts/human-oidc-signin)** — where a person signs in (the trust attestor doubles as an OpenID Provider) and lands in the `(iss, sub_h)` account their agent already created. It is authentication, not ownership, so it composes with both bindings above.
+</Note>
+
 ## Spam-resistance without PII
 
 Accepting *any* keypair with no registry is what makes AFAuth open — and, alone, what would make it spammable: 10,000 throwaway keys look like 10,000 customers. The [attestation](/concepts/attestation) layer closes that gap by binding abuse-accounting to a **human**, while collecting nothing about them.

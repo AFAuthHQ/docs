@@ -1,0 +1,174 @@
+---
+title: "Add Sign in with AFAuth"
+description: "Let humans sign in to your service and land in the account their agent already created."
+---
+
+Add a **Sign in with AFAuth** button and a human lands in the account their agent created. Your service acts as an OIDC **relying party** to the [trust attestor](/concepts/trust-attestor)'s OpenID Provider. This page is the how-to; the [concept](/concepts/human-oidc-signin) is the why.
+
+<Note>
+**No SDK helper yet.** The trust attestor's OIDC side is live, but the reference SDK doesn't ship a drop-in RP handler — you hand-wire the callback (roughly the same shape as a "Sign in with Google" route). It's a small amount of standard OIDC code; the snippets below are complete.
+</Note>
+
+## Prerequisites
+
+- A `service_did` you already use for attestation (§4.3) — sign-in **reuses** it, it is not a new identifier.
+- Agents that sign up **attested** (linked to their human), so accounts carry a `sub_h`. See [Preconditions](#preconditions) if some accounts were created as guests first.
+
+## 1. Register as an OIDC client
+
+Ask the attestor operator to register your service. A client binds three things ([§10.8.3](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1083-client-registration)):
+
+| Field | Value |
+|---|---|
+| `client_id` | Your service identifier (your `service_did` is a fine value). |
+| `service_did` | **MUST equal** the `aud` / `service_did` you use for attestation. It is the audience input to the `sub_h` derivation — a mismatch lands humans in a *different, empty* account. |
+| `redirect_uris` | Exact callback URLs. Anything not on the allowlist is rejected **before** a code is issued. |
+
+For `trust.afauth.org`, the operator sets this in the `TRUST_OIDC_CLIENTS` environment variable:
+
+```json
+[
+  {
+    "client_id": "did:web:api.example.com",
+    "service_did": "did:web:api.example.com",
+    "redirect_uris": ["https://api.example.com/auth/afauth/callback"]
+  }
+]
+```
+
+Running your own attestor? The same registry lives in your attestor's config — see [Run your own attestor](/guides/run-your-own-attestor).
+
+## 2. The flow
+
+Standard OIDC **Authorization Code + PKCE** (`S256`). Discovery is at `https://trust.afauth.org/.well-known/openid-configuration`.
+
+```
+  Human                  Your service (RP)              trust.afauth.org (OP)
+    │  GET /login          │                                │
+    │─────────────────────▶│ 302 /oidc/authorize            │
+    │                      │  ?client_id&redirect_uri        │
+    │                      │  &response_type=code&scope=openid│
+    │                      │  &code_challenge&…=S256&state&nonce
+    │                      │────────────────────────────────▶│
+    │        authenticate as the human   ◀───────────────────│
+    │                      │  302 redirect_uri?code&state     │
+    │                      │◀────────────────────────────────│
+    │                      │ POST /oidc/token (code_verifier) │
+    │                      │────────────────────────────────▶│
+    │                      │  { id_token, token_type, … }     │
+    │                      │◀────────────────────────────────│
+    │  session cookie  ◀───│ verify → resolve (iss, sub_h)    │
+```
+
+## 3. Start the sign-in (authorize)
+
+Generate a PKCE verifier + challenge and a `state`/`nonce`, stash them in a short-lived store keyed by `state`, and redirect:
+
+```ts
+import { generators } from "openid-client"; // or any PKCE helper
+
+const verifier = generators.codeVerifier();
+const challenge = generators.codeChallenge(verifier); // S256
+const state = generators.state();
+const nonce = generators.nonce();
+await pending.put(state, { verifier, nonce }, { ttlSeconds: 600 });
+
+const authorize = new URL("https://trust.afauth.org/oidc/authorize");
+authorize.search = new URLSearchParams({
+  client_id: SERVICE_DID,
+  redirect_uri: "https://api.example.com/auth/afauth/callback",
+  response_type: "code",
+  scope: "openid",
+  code_challenge: challenge,
+  code_challenge_method: "S256",
+  state,
+  nonce,
+}).toString();
+
+return Response.redirect(authorize.toString(), 302);
+```
+
+## 4. Handle the callback (token + verify)
+
+Exchange the code at the token endpoint, then verify the `id_token` against the trust JWKS:
+
+```ts
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const ISSUER = "https://trust.afauth.org";
+const jwks = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
+
+// callback: GET /auth/afauth/callback?code&state
+const { code, state } = Object.fromEntries(new URL(req.url).searchParams);
+const stash = await pending.take(state); // missing → reject (CSRF / replay)
+
+const res = await fetch(`${ISSUER}/oidc/token`, {
+  method: "POST",
+  headers: { "content-type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    code_verifier: stash.verifier,
+    client_id: SERVICE_DID,
+    redirect_uri: "https://api.example.com/auth/afauth/callback",
+  }),
+});
+const { id_token } = await res.json();
+
+const { payload } = await jwtVerify(id_token, jwks, {
+  issuer: ISSUER,        // iss === https://trust.afauth.org
+  audience: SERVICE_DID, // aud === your service_did
+});
+if (payload.nonce !== stash.nonce) throw new Error("nonce mismatch");
+```
+
+`jwtVerify` checks the signature, `iss`, `aud`, and `exp` for you; the explicit `nonce` check closes the loop opened at the authorize step.
+
+## 5. Resolve to the account — canonicalize the issuer
+
+The account lives under `(iss, sub_h)`, where `sub_h` is `id_token.sub`. The catch: your **attestation** path stored `iss = "afauth-trust"`, but the `id_token` carries the URL. Map both to one issuer before you look up, or the human lands in a new empty account:
+
+```ts
+const canonicalIss = (iss) =>
+  iss === "afauth-trust" ? "https://trust.afauth.org" : iss;
+
+const account = await users.findByPrincipal(canonicalIss(payload.iss), payload.sub);
+if (!account) {
+  // No agent has signed up under this human yet at your service.
+  // Don't auto-create — tell them to point their agent here first.
+  return noAgentAccountYet();
+}
+return startSession(account); // they're in
+```
+
+<Warning>
+This canonicalization is the **one** thing that silently breaks sign-in. The agent's attestation `iss` is the bare string `afauth-trust`; the `id_token` `iss` is `https://trust.afauth.org`. They are the same attestor — treat them as one before keying the account ([§10.8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1084-issuer-canonicalization-convergence-requirement)). Store your attestation issuer canonicalized too, so both paths agree.
+</Warning>
+
+## Preconditions
+
+Sign-in resolves an account by `(iss, sub_h)`, so the account needs a `sub_h`. That is written when an agent signs up **attested** (after [linking to its human](/guides/link-to-a-human)). Two cases to know:
+
+- **Attested signup, then sign-in** — works immediately; the signup wrote `sub_h`.
+- **Guest signup, then link, then sign-in** — the guest account had no `sub_h`. Because signup is idempotent on the agent's `did:key`, the principal binds on the agent's **next attested request** after linking. After that one request, sign-in resolves to the same account. (Until then, the human signing in would resolve to nothing and see "no account yet".)
+
+## What sign-in does not do
+
+Signing in **authenticates** the human to the `(iss, sub_h)` account — it does not transfer ownership. It does not run the [claim ceremony](/guides/invite-and-claim) or raise the [§7.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim) owner-binding floor. If you want a *recoverable* human owner (recovery contacts, credential enrollment), run a claim alongside sign-in — they compose. See [§10.8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1085-what-sign-in-does-and-does-not-do).
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Sign in with AFAuth (concept)" icon="circle-info" href="/concepts/human-oidc-signin">
+    The `(iss, sub_h)` = OIDC `(issuer, subject)` idea, in full.
+  </Card>
+  <Card title="Accept trust attestations" icon="badge-check" href="/guides/accept-afauth-trust">
+    The agent-side gate that writes `sub_h` in the first place.
+  </Card>
+  <Card title="Invite and claim" icon="handshake" href="/guides/invite-and-claim">
+    Establish a recoverable human owner alongside sign-in.
+  </Card>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    Full OIDC endpoint and `id_token` shapes.
+  </Card>
+</CardGroup>

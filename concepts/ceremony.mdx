@@ -10,12 +10,13 @@ The transition from an agent-owned account to a human-owned account is the **sec
 If a stolen agent key could re-target ownership to an attacker-controlled address, the account is permanently compromised. AFAuth prevents this by requiring two distinct authentications: the agent's signature, and the human's authentication at the invited address.
 
 <Note>
-**Ceremony vs. linking to a human.** AFAuth has two different agent+human relationships, and they're easy to confuse:
+**Ceremony vs. linking vs. sign-in.** AFAuth's agent+human relationships are easy to confuse:
 
 - **The ceremony** (this page) binds *account ownership* at one service. It's post-hoc, transfers owner-binding authority to the human, and is the security boundary for that account.
 - **[Linking to a human](/concepts/trust-attestor)** binds the agent's DID to a human-controlled identity *at `trust.afauth.org`*, so the agent can mint spam-resistance [attestations](/concepts/attestation). It happens before/at signup, transfers no ownership, creates no service account, and is revocable any time.
+- **[Sign in with AFAuth](/concepts/human-oidc-signin)** is the *human*-initiated path: a person signs in (the attestor doubles as an OpenID Provider) and lands in the `(iss, sub_h)` account their agent created. Authentication, not ownership — it does **not** perform this ceremony.
 
-A default agent does **both**: it links to a human (to reach an `attested_only` service) and, separately, may invite a human to claim each account.
+A default agent links to a human and may invite a human to claim each account; sign-in is how that human later walks back in.
 </Note>
 
 ## The five states

@@ -26,7 +26,7 @@ Short definitions for the vocabulary used across these docs. Each links to the p
 - **Attestation** — A JWT, presented in the `AFAuth-Attestation` header, in which an attestor vouches for the agent's runtime — by default, that a verified human stands behind it. → [Attestation](/concepts/attestation)
 - **Attestor** — The party that signs attestations. AFAuth recognizes four classes: trust, platform, commerce, and service-operator HMAC. → [Attestation](/concepts/attestation)
 - **Trust attestor** — The canonical `afauth-trust` issuer at [trust.afauth.org](https://trust.afauth.org), which mints short-lived, audience-bound JWTs that an agent is bound to a human — verifiable offline against its JWKS. → [The trust attestor](/concepts/trust-attestor)
-- **`sub_h`** — A per-service, pairwise human pseudonym (HMAC-SHA256, ≥ 128 bits, opaque, no PII), stable per `(human, service)` and unlinkable across services — the handle services bucket per-human quotas and bans on. → [The trust attestor](/concepts/trust-attestor)
+- **`sub_h`** — A per-service, pairwise human pseudonym (HMAC-SHA256, ≥ 128 bits, opaque, no PII), stable per `(human, service)` and unlinkable across services — the handle services bucket per-human quotas and bans on. It is also the OIDC `sub` when the human signs in, so attestation and [Sign in with AFAuth](/concepts/human-oidc-signin) converge on one account. → [The trust attestor](/concepts/trust-attestor)
 - **Binding (trust link)** — The link between an agent DID and a human account at the trust attestor (`afauth trust link`). Transfers no ownership, creates no account, lasts ~90 days, and lets the agent mint attestations. → [The trust attestor](/concepts/trust-attestor)
 - **`unclaimed_mode`** — The discovery field declaring how a service treats pre-claim signups: `attested_only`, `free`, or `denied`. → [Attestation](/concepts/attestation)
 - **`attested_only`** — The `defineService` default: implicit signup is refused unless a valid attestation is present (`401 attestation_required`, no account created). → [Attestation](/concepts/attestation)
@@ -34,6 +34,8 @@ Short definitions for the vocabulary used across these docs. Each links to the p
 - **`verification` (claim)** — The trust-attestation claim naming the strongest method the human has on file: `email`, `oauth`, or `payment`. Services rank it by their own policy; unknown values MUST be ignored, not rejected. → [The trust attestor](/concepts/trust-attestor)
 - **Attested session** — Keeping a fresh attestation on file and re-challenging when it lapses (§10.7), so an attestor-side revoke reaches signature-gated services within the window. → [Keep attested access live](/guides/keep-attested-access-live)
 - **JWKS / JWT** — The JSON Web Key Set a service verifies attestation JWTs against (the trust attestor publishes its keys at `trust.afauth.org/.well-known/jwks.json`), and the JSON Web Token an attestation takes. → [Attestation](/concepts/attestation)
+- **Sign in with AFAuth** — Human social-login: a person signs in via the trust attestor (an OpenID Provider) and lands in the `(iss, sub_h)` account their agent already created. Authentication, not ownership. → [Sign in with AFAuth](/concepts/human-oidc-signin)
+- **`id_token`** — The OIDC token the trust attestor mints at sign-in: `sub` is the same pairwise `sub_h` as the agent's attestation, `iss` is the URL `https://trust.afauth.org`, `aud` is the service's `service_did`; it carries no PII. → [Sign in with AFAuth](/concepts/human-oidc-signin)
 
 ## Ownership & lifecycle
 

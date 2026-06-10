@@ -65,6 +65,10 @@ Once agents are linking to humans, flip the default to `attestation: "required"`
 
 AFAuth occupies the identity-and-authentication layer for agents and sits *alongside* these — it doesn't ask you to move any of them.
 
+<Note>
+**Want humans to sign in, too?** Once agents are signing up attested, you can add a **[Sign in with AFAuth](/guides/add-sign-in-with-afauth)** button — the agent-first analogue of "Sign in with Google". The human lands in the account their agent already created, keyed on the same `(iss, sub_h)`. It sits beside your existing OAuth, not instead of it.
+</Note>
+
 ## Where to next
 
 <CardGroup cols={2}>
@@ -79,5 +83,8 @@ AFAuth occupies the identity-and-authentication layer for agents and sits *along
   </Card>
   <Card title="Why AFAuth" icon="circle-question" href="/why-afauth">
     What delegation and shared keys can't do.
+  </Card>
+  <Card title="Add Sign in with AFAuth" icon="right-to-bracket" href="/guides/add-sign-in-with-afauth">
+    The agent-first "Sign in with Google" for your human users.
   </Card>
 </CardGroup>

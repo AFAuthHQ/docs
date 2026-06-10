@@ -1,0 +1,81 @@
+---
+title: "Sign in with AFAuth"
+description: "How a human signs in to a service and lands in the account their agent already created — the agent-first analogue of 'Sign in with Google'."
+---
+
+The trust attestor is also an **OpenID Provider**. A service can add a **"Sign in with AFAuth"** button so a *human* signs in and lands in the *same account their agent already created* — the agent-first analogue of "Sign in with Google".
+
+<Note>
+Defined in [AFAP-0008](https://github.com/AFAuthHQ/spec/blob/main/proposals/0008-attestor-oidc-identity-provider.md) and recognized normatively at [`spec/core.md` §10.8](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#108-human-sign-in-via-the-trust-attestor-openid-provider). It builds entirely on the `(iss, sub_h)` principal of §10.4 — no new trust root, no new key.
+</Note>
+
+## The one-line idea
+
+An AFAuth account is already keyed on the pairwise principal `(iss, sub_h)` ([§10.4.4 account grouping](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1044-service-use)). That pair **is** an OIDC `(issuer, subject)`. So the only piece missing for human sign-in was an *issuer endpoint*: something that authenticates the human and returns a signed token carrying that `sub_h`. The trust attestor — which already holds the human↔agent binding and already derives `sub_h` — now exposes exactly that.
+
+The payoff: your agent signs up (attested), creating an account keyed on `(iss, sub_h)`. Later the human clicks **Sign in with AFAuth**, authenticates at `trust.afauth.org`, and the returned `id_token` carries the *same* `sub_h` — so they land in the account the agent built, not a new empty one.
+
+## Three relationships, one principal
+
+The trust attestor sits across three flows. [Linking](/guides/link-to-a-human) and [claiming](/guides/invite-and-claim) already existed; **sign-in** is the new one — and all three resolve to the same `(iss, sub_h)`:
+
+| Flow | Who starts it | What it does |
+|---|---|---|
+| **Link** | agent | Binds the agent DID to a human at `trust.afauth.org` so an `attested_only` service accepts it. Transfers no ownership. |
+| **Claim** | agent (invites) | Hands *ownership* of one account to a human — the [ceremony](/concepts/ceremony). |
+| **Sign in** | **human** | The human authenticates and lands in the `(iss, sub_h)` account their agent created. |
+
+```
+  Human                    Your service (RP)            trust.afauth.org (OP)
+    │  click "Sign in        │                              │
+    │   with AFAuth"         │  302 → /oidc/authorize       │
+    │───────────────────────▶│  (PKCE, state, nonce)        │
+    │                        │─────────────────────────────▶│
+    │            authenticate as the human  ◀───────────────│
+    │                        │   302 back with ?code         │
+    │                        │◀─────────────────────────────│
+    │                        │  POST /oidc/token (verifier)  │
+    │                        │─────────────────────────────▶│
+    │                        │   id_token { sub = sub_h }    │
+    │                        │◀─────────────────────────────│
+    │   session in the       │  resolve (iss, sub_h)         │
+    │   agent's account  ◀───│  → the agent-created account  │
+```
+
+## What sign-in is — and isn't
+
+- **Authentication, not ownership.** Signing in proves the human is the principal behind the `(iss, sub_h)` account. It does **not** by itself run the [claim ceremony](/concepts/ceremony) or raise the [§7.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#75-authority-model-post-claim) owner-binding floor. A service MAY treat a first sign-in as enough to show the human their agent's account, and MAY separately run a claim to establish a *recoverable* owner ([§10.8.5](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1085-what-sign-in-does-and-does-not-do)).
+- **No PII crosses the wire.** The `id_token` carries only the pairwise `sub_h` — never an email, name, or other identifier — the same constraint [trust attestations](/concepts/trust-attestor) honour. Two colluding services still cannot correlate the same human.
+- **Audience-bound.** The `id_token`'s `aud` is your `service_did`; a token minted for another service cannot be replayed at yours — the same redirection defence attestations get.
+
+## The convergence — and the one way to break it
+
+The agent's attestation carries `iss: "afauth-trust"` (a bare string). The sign-in `id_token` carries `iss: "https://trust.afauth.org"` (a URL — OIDC issuers must be URLs). **They denote the same attestor.**
+
+A service that keys accounts on `(iss, sub_h)` and offers sign-in **MUST** treat both forms as one issuer identity — canonicalize to the URL — before lookup. Skip it and the human lands in a brand-new empty account instead of their agent's. It's a *silent* correctness bug, which is why the spec makes it a normative requirement ([§10.8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1084-issuer-canonicalization-convergence-requirement)). The fix is one line:
+
+```ts
+const canonicalIss = (iss) =>
+  iss === "afauth-trust" ? "https://trust.afauth.org" : iss;
+```
+
+## Precondition: the account needs a `sub_h`
+
+Sign-in finds an account by `(iss, sub_h)`, so the account must *have* a `sub_h`. That value is written when the agent signs up **attested** — i.e. after it has been [linked to the human](/guides/link-to-a-human). An agent that signed up as an unattested **guest** first has no `sub_h` yet; it binds one on its next attested request, after which sign-in resolves. The [guide](/guides/add-sign-in-with-afauth#preconditions) covers this case.
+
+## Build it
+
+<CardGroup cols={2}>
+  <Card title="Add Sign in with AFAuth" icon="right-to-bracket" href="/guides/add-sign-in-with-afauth">
+    Service-side how-to: register the client, run the OIDC flow, resolve the account.
+  </Card>
+  <Card title="The trust attestor" icon="circle-info" href="/concepts/trust-attestor">
+    The OpenID Provider behind sign-in — the same issuer that mints attestations.
+  </Card>
+  <Card title="Trust API reference" icon="code" href="/reference/trust-api">
+    OIDC endpoints, the `id_token` shape, and client registration.
+  </Card>
+  <Card title="AFAP-0008" icon="file-lines" href="https://github.com/AFAuthHQ/spec/blob/main/proposals/0008-attestor-oidc-identity-provider.md">
+    The proposal and normative `core.md` §10.8 text.
+  </Card>
+</CardGroup>

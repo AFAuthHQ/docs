@@ -79,6 +79,10 @@ The trust attestor sits between two principals:
 
 Walk through the agent side: [Link your agent to a human](/guides/link-to-a-human). Walk through the service side: [Accept `afauth-trust` attestations](/guides/accept-afauth-trust).
 
+## Also: humans sign in
+
+Beyond linking and attestation, the trust attestor is also an **OpenID Provider**. A service can add a **Sign in with AFAuth** button so a *human* signs in and lands in the `(iss, sub_h)` account their agent already created — the same pairwise principal, now used as an OIDC `(issuer, subject)`. The `id_token`'s `sub` is the very `sub_h` above; its `iss` is the URL `https://trust.afauth.org` (the OIDC form of the bare-string attestation `iss`). See [Sign in with AFAuth](/concepts/human-oidc-signin) for the model and [Add Sign in with AFAuth](/guides/add-sign-in-with-afauth) for the how-to.
+
 ## Governance
 
 `trust.afauth.org` is operated by AFAuthHQ in this version. The operator's responsibilities are narrow — running the verification flows, signing JWTs against rotating keys, publishing the JWKS, and revoking bindings on demand.
@@ -105,5 +109,8 @@ Operating one is a step-by-step in [Run your own attestor](/guides/run-your-own-
   </Card>
   <Card title="Attestation concept" icon="circle-info" href="/concepts/attestation">
     The broader §10 attestation surface — HMAC, JWKS, multi-attestor.
+  </Card>
+  <Card title="Sign in with AFAuth" icon="right-to-bracket" href="/concepts/human-oidc-signin">
+    The attestor as an OpenID Provider: humans sign in to the agent-created account.
   </Card>
 </CardGroup>

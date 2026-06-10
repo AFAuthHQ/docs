@@ -1,6 +1,6 @@
 ---
 title: "Trust API"
-description: "Endpoints at trust.afauth.org — link flow, attestation tokens, JWKS."
+description: "Endpoints at trust.afauth.org — link flow, attestation tokens, JWKS, and OIDC sign-in."
 ---
 
 The trust attestor exposes a small HTTP surface at `trust.afauth.org`. This flow is what every signup to a default (`attested_only`) service requires: agents drive a link request through `/v1/link/*` once, then mint a per-service attestation JWT at `/v1/token` — signed with the agent's account key, no bearer token — and present it as `AFAuth-Attestation`. A service that lacks the header rejects the request with `401 attestation_required`. Services need only fetch the JWKS at `/.well-known/jwks.json` to verify tokens offline.
@@ -28,8 +28,11 @@ All requests and responses are JSON (`application/json`) unless noted. All URLs 
 | `POST`   | `/v1/link/poll`            | request body signature     | Agent → returns the binding (id + expiry) once a human has confirmed. |
 | `POST`   | `/v1/token`                | agent §5 request signature | Agent → mints a §10 attestation JWT bound to a `service_did`. |
 | `DELETE` | `/v1/bindings/{id}`        | session cookie             | Human → revokes a binding from the dashboard. |
+| `GET`    | `/.well-known/openid-configuration` | none              | OIDC discovery document. Cached 300s. |
+| `GET`    | `/oidc/authorize`          | human session              | Human sign-in → redirects back with an auth code (PKCE). |
+| `POST`   | `/oidc/token`              | PKCE `code_verifier`       | Relying party exchanges the code for an `id_token`. |
 
-The human-facing surface (`/signin`, `/account`, `/link`) is browser UI, not a programmatic API. It is documented here only where it intersects the agent-side flow.
+The human-facing surface (`/signin`, `/account`, `/link`) is browser UI, not a programmatic API. It is documented here only where it intersects the agent-side or sign-in flow.
 
 ---
 
@@ -223,6 +226,109 @@ Revoke a binding. Human-only — authenticated by the session cookie set at `tru
 ```
 
 After revocation, all subsequent `/v1/token` calls signed by the binding's agent key return `403 binding_revoked`. Previously-issued JWTs continue to verify until their `exp` (≤ 900 seconds out). To shorten that window further, services may operate a short-lived `iat` lower bound at their discretion.
+
+---
+
+## Sign in with AFAuth (OIDC)
+
+Beyond agent attestation, `trust.afauth.org` is an **OpenID Provider**, so a service can offer human **[Sign in with AFAuth](/guides/add-sign-in-with-afauth)**. The human signs in and lands in the `(iss, sub_h)` account their agent created — the `id_token`'s `sub` is the same pairwise `sub_h` the attestation carries. Standard Authorization Code + PKCE (`S256`); normative shape in [§10.8](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#108-human-sign-in-via-the-trust-attestor-openid-provider).
+
+<Note>
+The `id_token` `iss` is the URL `https://trust.afauth.org`; the **attestation** `iss` is the bare string `afauth-trust`. They denote the same attestor — a relying party MUST canonicalize both to one issuer before keying the account ([§10.8.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1084-issuer-canonicalization-convergence-requirement)), or the human lands in an empty one. The OIDC keys are the **same** JWKS used for attestation (`/.well-known/jwks.json`).
+</Note>
+
+### `GET /.well-known/openid-configuration`
+
+The OpenID Provider configuration. Cached 300s.
+
+```json
+{
+  "issuer": "https://trust.afauth.org",
+  "authorization_endpoint": "https://trust.afauth.org/oidc/authorize",
+  "token_endpoint": "https://trust.afauth.org/oidc/token",
+  "jwks_uri": "https://trust.afauth.org/.well-known/jwks.json",
+  "scopes_supported": ["openid"],
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code"],
+  "subject_types_supported": ["pairwise"],
+  "id_token_signing_alg_values_supported": ["EdDSA"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["none"],
+  "claims_supported": ["iss", "sub", "aud", "exp", "iat", "nonce"]
+}
+```
+
+### `GET /oidc/authorize`
+
+Starts human sign-in. The relying party redirects the human's browser here; after the human authenticates, the attestor redirects back to the registered `redirect_uri` with a single-use `code`.
+
+| Param | Required | Notes |
+|---|---|---|
+| `client_id` | yes | The registered client (typically the service DID). |
+| `redirect_uri` | yes | MUST exactly match a registered URI, or the request is rejected before any code is issued. |
+| `response_type` | yes | `code`. |
+| `scope` | yes | `openid`. |
+| `code_challenge` | yes | PKCE challenge. |
+| `code_challenge_method` | yes | `S256` (the only method offered). |
+| `state` | recommended | Opaque CSRF token; echoed on the redirect back. |
+| `nonce` | recommended | Echoed into the `id_token`; bind it to the session. |
+
+If the human has no trust session, the attestor bounces to `/signin` first and resumes the request afterward. Authorization codes are single-use and short-lived (~120 s).
+
+### `POST /oidc/token`
+
+Exchanges the `code` for an `id_token`. Accepts `application/x-www-form-urlencoded` or JSON. Public client — no client secret; PKCE is the proof.
+
+| Field | Required | Notes |
+|---|---|---|
+| `grant_type` | yes | `authorization_code`. |
+| `code` | yes | From the authorize redirect. Single-use. |
+| `code_verifier` | yes | The PKCE verifier for the challenge sent to `/oidc/authorize`. |
+| `client_id` | yes | Same client as the authorize step. |
+| `redirect_uri` | yes | Same value as the authorize step. |
+
+#### Response — 200 OK (`Cache-Control: no-store`)
+
+```json
+{
+  "id_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6...",
+  "token_type": "Bearer",
+  "expires_in": 300
+}
+```
+
+#### `id_token` shape (per [§10.8.2](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#1082-id-token-claims))
+
+```
+header: { alg: "EdDSA", typ: "JWT", kid: "<from jwks.json>" }
+claims: {
+  iss:   "https://trust.afauth.org",
+  aud:   "<service_did>",
+  sub:   "<sub_h — same pairwise pseudonym as the attestation>",
+  iat:   <unix>,
+  exp:   <unix>,
+  nonce: "<echoed if supplied>"
+}
+```
+
+- Verify it against the JWKS with `iss = https://trust.afauth.org` and `aud =` your `service_did`; check `exp` and the `nonce`.
+- `sub` is the [§10.4](https://github.com/AFAuthHQ/spec/blob/main/spec/core.md#104-pairwise-human-pseudonym-sub_h) pairwise `sub_h` — resolve the account by `(canonicalIss(iss), sub)`. No PII is present.
+
+### Client registration
+
+A relying party is registered out-of-band (for `trust.afauth.org`, in the `TRUST_OIDC_CLIENTS` config):
+
+```json
+[
+  {
+    "client_id":     "did:web:api.example.com",
+    "service_did":   "did:web:api.example.com",
+    "redirect_uris": ["https://api.example.com/auth/afauth/callback"]
+  }
+]
+```
+
+`service_did` MUST equal the value the service uses as the attestation `aud` — it is the audience input to the `sub_h` derivation, so a mismatch sends the human to a different, empty account (§10.8.3). The `/oidc/*` endpoints return standard OAuth 2.0 / OIDC error responses (`invalid_request`, `invalid_grant`, `invalid_client`, …), distinct from the trust-attestor envelope below.
 
 ---
 
